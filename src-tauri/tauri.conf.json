@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "WattDrive",
+  "version": "0.1.0",
+  "identifier": "co.swatto.wattdrive",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1430",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "WattDrive",
+        "width": 820,
+        "height": 560,
+        "minWidth": 640,
+        "minHeight": 440,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": false,
+        "backgroundColor": "#1d232a",
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost",
+      "devCsp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost ws://localhost:* http://localhost:*"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "targets": ["appimage"],
+    "publisher": "Swatto",
+    "copyright": "© 2026 Swatto",
+    "license": "MIT",
+    "category": "Utility",
+    "shortDescription": "iCloud Drive sync for Omarchy",
+    "longDescription": "WattDrive — keeps a local folder in two-way sync with iCloud Drive on Linux, built with Rust and Tauri.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/Swatto86/WattDrive/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU1QUY2OTM5RTY4NEVFOTkKUldTWjdvVG1PV212NVlaM0NxdmtuZy9kV2pEdU5nNmtkeTdtTFhER1ZyV1Fwa1pOc0ZHZnRZaHQK"
+    }
+  }
+}

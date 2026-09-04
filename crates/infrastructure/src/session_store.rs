@@ -1,0 +1,105 @@
+//! OS keyring persistence for the iCloud session and the Apple ID credentials.
+//!
+//! Linux Secret Service (GNOME Keyring / KWallet through libsecret) has no
+//! practical size limit, so each item is one JSON entry. Calls are blocking
+//! D-Bus round-trips: callers wrap them in `spawn_blocking`.
+
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use crate::icloud::SavedSession;
+
+const SERVICE: &str = "WattDrive";
+const SESSION_ENTRY: &str = "icloud-session";
+const CREDENTIALS_ENTRY: &str = "icloud-credentials";
+
+#[derive(Debug, Error)]
+pub enum StoreError {
+    #[error("keyring: {0}")]
+    Keyring(#[from] keyring::Error),
+    #[error("stored value is not valid JSON: {0}")]
+    Json(#[from] serde_json::Error),
+}
+
+/// The Apple ID and password, kept so the app can renew its session without
+/// asking again (Apple's web session needs the password for SRP; the trust
+/// token only skips the second factor).
+#[derive(Clone, Serialize, Deserialize)]
+pub struct StoredCredentials {
+    pub apple_id: String,
+    pub password: String,
+}
+
+impl std::fmt::Debug for StoredCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StoredCredentials")
+            .field("apple_id", &self.apple_id)
+            .field("password", &"<redacted>")
+            .finish()
+    }
+}
+
+pub struct SessionStore;
+
+impl SessionStore {
+    fn entry(name: &str) -> Result<keyring::Entry, keyring::Error> {
+        keyring::Entry::new(SERVICE, name)
+    }
+
+    fn load<T: for<'de> Deserialize<'de>>(name: &str) -> Result<Option<T>, StoreError> {
+        match Self::entry(name)?.get_password() {
+            Ok(json) => Ok(Some(serde_json::from_str(&json)?)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn save<T: Serialize>(name: &str, value: &T) -> Result<(), StoreError> {
+        Ok(Self::entry(name)?.set_password(&serde_json::to_string(value)?)?)
+    }
+
+    fn delete(name: &str) -> Result<(), StoreError> {
+        match Self::entry(name)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn load_session() -> Result<Option<SavedSession>, StoreError> {
+        Self::load(SESSION_ENTRY)
+    }
+
+    pub fn save_session(session: &SavedSession) -> Result<(), StoreError> {
+        Self::save(SESSION_ENTRY, session)
+    }
+
+    pub fn load_credentials() -> Result<Option<StoredCredentials>, StoreError> {
+        Self::load(CREDENTIALS_ENTRY)
+    }
+
+    pub fn save_credentials(creds: &StoredCredentials) -> Result<(), StoreError> {
+        Self::save(CREDENTIALS_ENTRY, creds)
+    }
+
+    /// Sign out: remove both entries.
+    pub fn clear() -> Result<(), StoreError> {
+        Self::delete(SESSION_ENTRY)?;
+        Self::delete(CREDENTIALS_ENTRY)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn credentials_debug_never_prints_the_password() {
+        let c = StoredCredentials {
+            apple_id: "a@b.c".into(),
+            password: "hunter2".into(),
+        };
+        let dbg = format!("{c:?}");
+        assert!(dbg.contains("a@b.c"));
+        assert!(!dbg.contains("hunter2"));
+    }
+}

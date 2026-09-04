@@ -1,0 +1,64 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/domain",
+    "crates/application",
+    "crates/infrastructure",
+    "src-tauri",
+]
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+rust-version = "1.96"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "warn"
+expect_used = "warn"
+
+[workspace.dependencies]
+# Internal crates
+wattdrive-domain = { path = "crates/domain" }
+wattdrive-application = { path = "crates/application" }
+wattdrive-infrastructure = { path = "crates/infrastructure" }
+
+# External
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "charset", "http2", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+async-trait = "0.1"
+tracing = "0.1"
+tempfile = "3"
+
+# Dev / iteration — keep workspace crates unoptimized for fast rebuilds;
+# lightly optimize deps once; slim debuginfo. Release profile below is unchanged.
+[profile.dev]
+incremental = true
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 1
+debug = false
+
+[profile.dev.build-override]
+opt-level = 3
+
+# Full symbols when debugging: cargo build --profile debugging
+[profile.debugging]
+inherits = "dev"
+debug = true
+
+# Release profile lives at the workspace root (member profiles are ignored).
+# Small, fast binary: fat LTO, one codegen unit, stripped, abort on panic.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "z"
+strip = true
+panic = "abort"

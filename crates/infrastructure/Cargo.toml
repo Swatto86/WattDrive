@@ -1,0 +1,41 @@
+[package]
+name = "wattdrive-infrastructure"
+version = "0.1.0"
+description = "WattDrive adapters: iCloud web API client, keyring session store, SQLite sync state"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+wattdrive-domain.workspace = true
+wattdrive-application.workspace = true
+tokio.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
+# Apple SRP-6a: 2048-bit modular arithmetic, SHA-256, PBKDF2-HMAC-SHA256.
+num-bigint = "0.4"
+num-traits = "0.2"
+sha2 = "0.10"
+pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
+hmac = "0.12"
+rand = "0.8"
+base64 = "0.22"
+uuid = { version = "1", features = ["v4"] }
+time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
+unicode-normalization = "0.1"
+mime_guess = "2"
+rusqlite = { version = "0.32", features = ["bundled"] }
+keyring = { version = "3", features = ["sync-secret-service"] }
+bytes = "1"
+futures-util = { version = "0.3", default-features = false }
+tokio-util = { version = "0.7", features = ["io"] }
+
+[dev-dependencies]
+tempfile.workspace = true

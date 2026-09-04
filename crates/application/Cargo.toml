@@ -1,0 +1,23 @@
+[package]
+name = "wattdrive-application"
+version = "0.1.0"
+description = "WattDrive sync engine: scans, plans and executes one two-way pass"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+wattdrive-domain.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+tempfile.workspace = true

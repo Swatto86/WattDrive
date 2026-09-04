@@ -1,0 +1,18 @@
+[package]
+name = "wattdrive-domain"
+version = "0.1.0"
+description = "WattDrive domain model: sync entities and the pure two-way sync planner"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+async-trait.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

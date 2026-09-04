@@ -1,0 +1,3 @@
+# Host-local extras (mold, sccache, cranelift) live in ~/.cargo/config.toml.
+# Do not set jobs = 0 — Cargo 1.96+ rejects it; Cargo already uses all CPUs.
+# Do not hard-code rustc-wrapper = "sccache" here; CI sets RUSTC_WRAPPER.

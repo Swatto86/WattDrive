@@ -1,0 +1,48 @@
+[package]
+name = "wattdrive-desktop"
+version = "0.1.0"
+description = "WattDrive desktop app — iCloud Drive sync for Omarchy"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "wattdrive_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-autostart = "2"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dirs = "6"
+time = { version = "0.3", features = ["formatting"] }
+notify = "8"
+wattdrive-domain.workspace = true
+wattdrive-application.workspace = true
+wattdrive-infrastructure.workspace = true
+
+# Linux-only app. Tray: Tauri's tray click events are unsupported on Linux, so
+# a StatusNotifierItem is registered directly via ksni for a real
+# primary-click-to-open on Omarchy's bar. png decodes the bundled tray icons
+# into ARGB32 pixmaps. notify-rust runs on a std::thread (its zbus block_on
+# aborts inside Tokio). webkit2gtk-nvidia-quirk: Hyprland + NVIDIA WebKit
+# DMA-BUF protocol error 71 on window show.
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = { version = "0.3", features = ["blocking"] }
+png = "0.17"
+notify-rust = "4.18"
+webkit2gtk-nvidia-quirk = "2.1.0"
