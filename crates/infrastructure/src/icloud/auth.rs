@@ -236,7 +236,7 @@ impl IcloudClient {
         let resp = self
             .send(
                 self.http
-                    .get(format!("{AUTH_URL}orize/signin"))
+                    .get(format!("{AUTH_URL}/authorize/signin"))
                     .header("Accept", "*/*")
                     .query(&[
                         ("frame_id", frame.as_str()),
@@ -699,8 +699,8 @@ mod tests {
     #[test]
     fn auth_url_paths_are_composed_as_apple_expects() {
         assert_eq!(
-            format!("{AUTH_URL}orize/signin"),
-            "https://idmsa.apple.com/appleauth/authorize/signin"
+            format!("{AUTH_URL}/authorize/signin"),
+            "https://idmsa.apple.com/appleauth/auth/authorize/signin"
         );
         assert_eq!(
             format!("{AUTH_URL}/2sv/trust"),
