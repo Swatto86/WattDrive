@@ -78,15 +78,26 @@ pub fn run() {
         tracing::warn!("could not read saved session: {e}");
         None
     });
-    let creds = SessionStore::load_credentials()
-        .unwrap_or_else(|e| {
-            tracing::warn!("could not read saved credentials: {e}");
-            None
-        })
-        .map(|c| Credentials {
-            apple_id: c.apple_id,
-            password: c.password,
-        });
+    let stored = SessionStore::load_credentials().unwrap_or_else(|e| {
+        tracing::warn!("could not read saved credentials: {e}");
+        None
+    });
+    // A lost session item must not cost a second factor: seed the trust token
+    // from the credentials item so the silent re-sign-in is trusted.
+    let saved = match (saved, &stored) {
+        (None, Some(c)) if !c.trust_token.is_empty() => {
+            tracing::info!("session item missing; re-signing in with the saved trust token");
+            Some(wattdrive_infrastructure::icloud::SavedSession {
+                trust_token: c.trust_token.clone(),
+                ..Default::default()
+            })
+        }
+        (saved, _) => saved,
+    };
+    let creds = stored.map(|c| Credentials {
+        apple_id: c.apple_id,
+        password: c.password,
+    });
     let client = match IcloudClient::new(saved, creds) {
         Ok(c) => Arc::new(c),
         Err(e) => fail(&format!("cannot create HTTP client: {e}")),

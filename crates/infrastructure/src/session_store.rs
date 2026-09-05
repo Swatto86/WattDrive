@@ -44,6 +44,11 @@ pub enum StoreError {
 pub struct StoredCredentials {
     pub apple_id: String,
     pub password: String,
+    /// Apple's 30-day two-factor trust token, duplicated here from the session
+    /// item: if the session item is lost, this still lets the next sign-in
+    /// skip the second factor.
+    #[serde(default)]
+    pub trust_token: String,
 }
 
 impl std::fmt::Debug for StoredCredentials {
@@ -65,6 +70,9 @@ impl SessionStore {
     fn load<T: for<'de> Deserialize<'de>>(name: &str) -> Result<Option<T>, StoreError> {
         let _one_at_a_time = serialised();
         match Self::entry(name)?.get_password() {
+            // An item whose secret came back blank (seen once after a keyring
+            // daemon crash) is treated as absent, not as corrupt.
+            Ok(json) if json.trim().is_empty() => Ok(None),
             Ok(json) => Ok(Some(serde_json::from_str(&json)?)),
             Err(keyring::Error::NoEntry) => Ok(None),
             Err(e) => Err(e.into()),
@@ -112,10 +120,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn credentials_without_a_trust_token_still_load() {
+        let c: StoredCredentials =
+            serde_json::from_str(r#"{"apple_id":"a@b.c","password":"p"}"#).unwrap();
+        assert_eq!(c.trust_token, "");
+    }
+
+    #[test]
     fn credentials_debug_never_prints_the_password() {
         let c = StoredCredentials {
             apple_id: "a@b.c".into(),
             password: "hunter2".into(),
+            trust_token: "tt".into(),
         };
         let dbg = format!("{c:?}");
         assert!(dbg.contains("a@b.c"));

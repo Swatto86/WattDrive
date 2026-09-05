@@ -71,6 +71,7 @@ async fn persist_sign_in(state: &AppState) -> Result<(), String> {
         SessionStore::save_credentials(&StoredCredentials {
             apple_id: creds.apple_id,
             password: creds.password,
+            trust_token: session.trust_token.clone(),
         })?;
         SessionStore::save_session(&session)
     })
