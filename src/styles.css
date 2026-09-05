@@ -41,6 +41,7 @@ body,
 .content {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 20px;
 }
 
@@ -96,7 +97,12 @@ body,
 .state-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 12px;
+}
+.state-row .state-text {
+  flex: 1 1 240px;
+  min-width: 0;
 }
 .state-dot {
   width: 12px;
@@ -115,14 +121,17 @@ body,
 .state-title {
   font-size: 16px;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 .stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 12px;
 }
 .stat {
+  flex: 1 1 110px;
+  min-width: 110px;
   background: oklch(var(--b2));
   border-radius: 8px;
   padding: 10px 12px;
@@ -147,14 +156,14 @@ body,
 .folder-row {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   font-size: 13px;
 }
 .folder-row code {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 200px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .setting {

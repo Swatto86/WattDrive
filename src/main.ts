@@ -136,7 +136,7 @@ app.innerHTML = `
       <div class="panel">
         <div class="state-row">
           <span id="state-dot" class="state-dot"></span>
-          <div style="flex:1">
+          <div class="state-text">
             <div id="state-title" class="state-title"></div>
             <div id="state-detail" class="muted"></div>
           </div>

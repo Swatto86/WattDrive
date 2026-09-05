@@ -51,7 +51,8 @@ decision — no Windows/macOS builds.
   account; first mirror of 420 items completed and a follow-up pass planned 0.
   Two zero-byte hidden files returned HTTP 400 on download — now created
   locally without a request (fix unverified live at time of writing). Uploads,
-  folder creation and trash are not yet exercised live.
+  replaces and deletes in both directions were then exercised live by Swatto
+  on 2026-09-05 and synced correctly.
 - Client id is icloud.com's public widget key (same as pyicloud/rclone).
 
 ## Open questions / known gaps
