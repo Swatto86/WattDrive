@@ -151,7 +151,13 @@ impl Executor<'_> {
         let tmp = dir.join(format!("{PARTIAL_PREFIX}{}", uuid::Uuid::new_v4().simple()));
 
         let result = async {
-            self.drive.download(remote, &tmp).await?;
+            // iCloud's content service answers 400 for an empty document; an
+            // empty file needs no request anyway.
+            if remote.size == 0 {
+                tokio::fs::write(&tmp, b"").await?;
+            } else {
+                self.drive.download(remote, &tmp).await?;
+            }
             let mtime = remote.modified_ms;
             let t = tmp.clone();
             blocking(move || local::set_mtime_ms(&t, mtime)).await?;
