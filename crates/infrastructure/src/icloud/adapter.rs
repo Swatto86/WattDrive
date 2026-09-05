@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures_util::stream::{self, StreamExt};
 use time::format_description::well_known::Rfc3339;
 use unicode_normalization::UnicodeNormalization;
 use wattdrive_domain::{DriveError, RemoteChild, RemoteDrive, RemoteFile, RemoteId, RemoteNode};
@@ -12,6 +13,12 @@ use wattdrive_domain::{DriveError, RemoteChild, RemoteDrive, RemoteFile, RemoteI
 use super::auth::IcloudClient;
 use super::drive::{self, ROOT_DRIVEWSID};
 use super::wire::DriveItem;
+
+/// Folder ids per `retrieveItemDetailsInFolders` request. Apple's own web
+/// app sends sizeable batches; this keeps each response comfortably small.
+const LIST_BATCH: usize = 40;
+/// Batched requests in flight at once.
+const LIST_CONCURRENCY: usize = 4;
 
 pub struct IcloudDrive {
     client: Arc<IcloudClient>,
@@ -70,6 +77,18 @@ pub(crate) fn to_child(item: DriveItem) -> Option<RemoteChild> {
     Some(RemoteChild { name, node })
 }
 
+/// Turn the folder items a batched listing returns into (id, children) pairs.
+fn pair_listings(folders: Vec<DriveItem>) -> Vec<(RemoteId, Vec<RemoteChild>)> {
+    folders
+        .into_iter()
+        .filter(|f| !f.drivewsid.is_empty())
+        .map(|f| {
+            let id = RemoteId(f.drivewsid);
+            (id, f.items.into_iter().filter_map(to_child).collect())
+        })
+        .collect()
+}
+
 #[async_trait]
 impl RemoteDrive for IcloudDrive {
     fn root(&self) -> RemoteId {
@@ -79,6 +98,28 @@ impl RemoteDrive for IcloudDrive {
     async fn list_children(&self, folder: &RemoteId) -> Result<Vec<RemoteChild>, DriveError> {
         let items = drive::list_folder(&self.client, folder.as_str()).await?;
         Ok(items.into_iter().filter_map(to_child).collect())
+    }
+
+    async fn list_children_many(
+        &self,
+        folders: &[RemoteId],
+    ) -> Result<Vec<(RemoteId, Vec<RemoteChild>)>, DriveError> {
+        // A plain loop, not a closure: rustc cannot prove a closure returning
+        // a future that borrows `self.client` general enough inside async_trait.
+        let mut requests = Vec::with_capacity(folders.len().div_ceil(LIST_BATCH));
+        for chunk in folders.chunks(LIST_BATCH) {
+            let ids: Vec<String> = chunk.iter().map(|id| id.as_str().to_string()).collect();
+            requests.push(drive::list_folders(&self.client, ids));
+        }
+        let results: Vec<Result<Vec<DriveItem>, DriveError>> = stream::iter(requests)
+            .buffer_unordered(LIST_CONCURRENCY)
+            .collect()
+            .await;
+        let mut out = Vec::with_capacity(folders.len());
+        for r in results {
+            out.extend(pair_listings(r?));
+        }
+        Ok(out)
     }
 
     async fn download(&self, file: &RemoteFile, dest: &Path) -> Result<(), DriveError> {
@@ -152,6 +193,22 @@ mod tests {
             to_child(item("FILE", "", "")).is_none(),
             "nameless items are skipped"
         );
+    }
+
+    #[test]
+    fn batched_listings_pair_children_with_their_folder() {
+        let mut a = item("FOLDER", "A", "");
+        a.drivewsid = "FOLDER::z::A".into();
+        a.items = vec![item("FILE", "x", "txt")];
+        let mut b = item("FOLDER", "B", "");
+        b.drivewsid = "FOLDER::z::B".into();
+        let mut nameless = item("FOLDER", "", "");
+        nameless.drivewsid = String::new();
+        let pairs = pair_listings(vec![a, b, nameless]);
+        assert_eq!(pairs.len(), 2, "an id-less entry is dropped");
+        assert_eq!(pairs[0].0.as_str(), "FOLDER::z::A");
+        assert_eq!(pairs[0].1[0].name, "x.txt");
+        assert!(pairs[1].1.is_empty());
     }
 
     #[test]

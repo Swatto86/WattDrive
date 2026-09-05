@@ -48,21 +48,33 @@ fn endpoint(client: &IcloudClient, key: &str) -> Result<String, DriveError> {
         .ok_or_else(|| DriveError::SignInRequired(format!("no {key} endpoint in session")))
 }
 
-pub async fn list_folder(
+/// List several folders in one request. Each returned item is a folder with
+/// its `items` filled in; the caller matches them back by `drivewsid`.
+pub async fn list_folders(
     client: &IcloudClient,
-    drivewsid: &str,
+    drivewsids: Vec<String>,
 ) -> Result<Vec<DriveItem>, DriveError> {
     let url = format!(
         "{}/retrieveItemDetailsInFolders",
         endpoint(client, "drivews")?
     );
-    let body = json!([{"drivewsid": drivewsid, "partialData": false, "includeHierarchy": false}]);
-    let items: Vec<DriveItem> = client
-        .service_json("list folder", &|http, h| {
+    let body: Vec<serde_json::Value> = drivewsids
+        .iter()
+        .map(|id| json!({"drivewsid": id, "partialData": false, "includeHierarchy": false}))
+        .collect();
+    client
+        .service_json("list folders", &|http, h| {
             http.post(&url).headers(h).json(&body)
         })
-        .await?;
-    items
+        .await
+}
+
+pub async fn list_folder(
+    client: &IcloudClient,
+    drivewsid: &str,
+) -> Result<Vec<DriveItem>, DriveError> {
+    list_folders(client, vec![drivewsid.to_string()])
+        .await?
         .into_iter()
         .next()
         .map(|folder| folder.items)
