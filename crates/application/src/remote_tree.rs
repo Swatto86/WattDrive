@@ -1,13 +1,8 @@
-//! Walk iCloud Drive into a path-keyed tree, listing sibling folders
-//! concurrently level by level.
+//! Walk iCloud Drive into a path-keyed tree, one batched listing per level.
 
 use std::collections::{BTreeMap, HashMap};
 
-use futures_util::stream::{self, StreamExt};
 use wattdrive_domain::{DriveError, RelPath, RemoteDrive, RemoteId, RemoteNode};
-
-/// How many folder listings are in flight at once.
-const LIST_CONCURRENCY: usize = 6;
 
 pub struct RemoteTree {
     pub nodes: BTreeMap<RelPath, RemoteNode>,
@@ -21,21 +16,27 @@ pub async fn walk(drive: &dyn RemoteDrive) -> Result<RemoteTree, DriveError> {
     let root_id = drive.root();
     let mut nodes = BTreeMap::new();
     let mut folder_ids = HashMap::new();
-    // (path of the folder, id) pairs still to list; None = root.
+    // Folders still to list, by id; None = root.
     let mut frontier: Vec<(Option<RelPath>, RemoteId)> = vec![(None, root_id.clone())];
 
     while !frontier.is_empty() {
-        let listings: Vec<_> = stream::iter(frontier.drain(..))
-            .map(|(path, id)| async move {
-                let children = drive.list_children(&id).await;
-                (path, children)
-            })
-            .buffer_unordered(LIST_CONCURRENCY)
-            .collect()
-            .await;
+        let ids: Vec<RemoteId> = frontier.iter().map(|(_, id)| id.clone()).collect();
+        let paths: HashMap<RemoteId, Option<RelPath>> =
+            frontier.drain(..).map(|(p, id)| (id, p)).collect();
+        let listings = drive.list_children_many(&ids).await?;
+        if listings.len() != ids.len() {
+            tracing::warn!(
+                "iCloud returned {} folder listings for {} requested",
+                listings.len(),
+                ids.len()
+            );
+        }
 
-        for (parent, children) in listings {
-            let children = children?;
+        for (folder_id, children) in listings {
+            let Some(parent) = paths.get(&folder_id) else {
+                tracing::warn!("listing for unrequested folder {}", folder_id.as_str());
+                continue;
+            };
             for child in children {
                 let path = match RelPath::child(parent.as_ref(), &child.name) {
                     Ok(p) => p,

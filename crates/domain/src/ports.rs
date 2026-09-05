@@ -15,6 +15,19 @@ pub trait RemoteDrive: Send + Sync {
     /// Direct children of a folder.
     async fn list_children(&self, folder: &RemoteId) -> Result<Vec<RemoteChild>, DriveError>;
 
+    /// Direct children of several folders. Adapters whose API can list many
+    /// folders per request override this; the default is one call each.
+    async fn list_children_many(
+        &self,
+        folders: &[RemoteId],
+    ) -> Result<Vec<(RemoteId, Vec<RemoteChild>)>, DriveError> {
+        let mut out = Vec::with_capacity(folders.len());
+        for id in folders {
+            out.push((id.clone(), self.list_children(id).await?));
+        }
+        Ok(out)
+    }
+
     /// Fetch a file's content into `dest` (an already-chosen temp path).
     async fn download(&self, file: &RemoteFile, dest: &Path) -> Result<(), DriveError>;
 

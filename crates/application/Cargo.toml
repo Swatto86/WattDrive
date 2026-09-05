@@ -15,7 +15,6 @@ tokio.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-futures-util = { version = "0.3", default-features = false, features = ["std"] }
 time = { version = "0.3", features = ["formatting", "macros", "local-offset"] }
 uuid = { version = "1", features = ["v4"] }
 
