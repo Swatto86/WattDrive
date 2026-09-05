@@ -44,6 +44,10 @@ decision — no Windows/macOS builds.
 
 ## State (2026-09-05)
 
+- **v0.1.0 tagged 2026-09-05** on 11e5cf5 after Swatto accepted the debug
+  handoff (sign-in, first mirror, two-way uploads/deletes, new icon, batched
+  listing ~9 s/pass). Release workflow builds the signed AppImage + latest.json.
+
 - Workspace, all crates, Tauri shell and frontend written; unit + engine tests
   green against a fake drive (see `crates/application/src/engine_tests.rs`).
 - **Live-verified 2026-09-05:** SRP sign-in + 2FA + trust, `accountLogin`,
