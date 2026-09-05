@@ -3,7 +3,7 @@
 > Progress log, decisions, open questions. Update at the end of any session
 > with meaningful changes; newest entries first.
 >
-> **Last updated:** 2026-09-05
+> **Last updated:** 2026-09-05 (late)
 
 ## Overview
 
@@ -13,6 +13,19 @@ keyring, SQLite, AppImage + updater, verify/fastcheck gates). Linux only by
 decision — no Windows/macOS builds.
 
 ## Decisions
+
+- **2026-09-05 Secrets in an encrypted file, one key in the keyring.**
+  gnome-keyring-daemon 50.0 on Omarchy aborts (`gkd_secret_service_get_pkcs11_session:
+  assertion 'client' failed`) when two Secret Service operations from
+  short-lived connections follow each other — the keyring crate's
+  `sync-secret-service` backend does exactly that. Three crashes correlated:
+  WattMail start-up (Sept 3), WattDrive sign-in and WattDrive start-up (Sept 5).
+  Now `~/.local/share/WattDrive/secrets.bin` (AES-256-GCM, mode 0600) holds
+  credentials + trust token + session; the keyring holds only `vault-key`, read
+  once per process. A one-off migration moves the old two items across.
+  WattMail has the same exposure and is not yet changed.
+- **2026-09-05 Trust token duplicated with the credentials.** A lost session
+  never costs a second factor; startup seeds a bare session from it.
 
 - **2026-09-05 Native client, not rclone.** Own Rust port of the icloud.com
   web protocol (SRP, 2FA, drivews/docws) rather than bundling rclone: one
@@ -33,9 +46,12 @@ decision — no Windows/macOS builds.
 
 - Workspace, all crates, Tauri shell and frontend written; unit + engine tests
   green against a fake drive (see `crates/application/src/engine_tests.rs`).
-- **Not yet live-verified against Apple.** Nothing in the auth or drive
-  modules has been exercised against real iCloud in this repo; the first
-  sign-in from the debug build is the milestone-1 acceptance step.
+- **Live-verified 2026-09-05:** SRP sign-in + 2FA + trust, `accountLogin`,
+  folder listing, download URLs and downloads all worked against Swatto's real
+  account; first mirror of 420 items completed and a follow-up pass planned 0.
+  Two zero-byte hidden files returned HTTP 400 on download — now created
+  locally without a request (fix unverified live at time of writing). Uploads,
+  folder creation and trash are not yet exercised live.
 - Client id is icloud.com's public widget key (same as pyicloud/rclone).
 
 ## Open questions / known gaps

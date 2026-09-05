@@ -10,7 +10,9 @@ crates/domain          RelPath, RemoteNode/LocalNode/SyncEntry, RemoteDrive port
 crates/application     SyncEngine::run_once: scan local → walk remote → plan →
                        execute; StateStore port; local fs helpers; ignore rules
 crates/infrastructure  icloud/{srp,session,auth,drive,adapter,wire}: Apple web
-                       API client; session_store (keyring); state_db (SQLite)
+                       API client; vault (AES-GCM file, key in keyring);
+                       session_store (credentials + session in the vault);
+                       state_db (SQLite)
 src-tauri              lib.rs composition root, commands (IPC), sync_runner
                        (timer + inotify loop), tray_linux (ksni), settings,
                        status DTOs, notify, linux_webkit quirks
@@ -48,5 +50,6 @@ second factor surfaces as `SignInRequired` and pauses syncing.
 `sync_runner` owns the loop: startup delay, poll timer, debounced inotify
 trigger (with a grace window so our own downloads do not retrigger), manual
 sync, reconfigure, sign-in/out. Status snapshots are pushed to the window
-(`sync-status` event) and the ksni tray (icon per state). All keyring and
-notify-rust calls run on plain threads, never on Tokio workers.
+(`sync-status` event) and the ksni tray (icon per state). The keyring is touched once per process (the vault key); session saves are
+coalesced by `session_saver`. Keyring and notify-rust calls run on plain
+threads, never on Tokio workers.
