@@ -6,6 +6,7 @@
 pub mod commands;
 #[cfg(target_os = "linux")]
 pub mod linux_webkit;
+mod migrate_keyring;
 mod notify;
 mod paths;
 mod session_saver;
@@ -80,6 +81,7 @@ pub fn run() {
         Err(e) => fail(&format!("cannot open the secrets store: {e}")),
     };
     session_saver::init(store.clone());
+    migrate_keyring::run(&store, &paths::secrets_path());
     let saved = store.load_session().unwrap_or_else(|e| {
         tracing::warn!("could not read saved session: {e}");
         None

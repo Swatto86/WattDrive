@@ -29,6 +29,7 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 dirs = "6"
+keyring = { version = "3", features = ["sync-secret-service"] }
 time = { version = "0.3", features = ["formatting"] }
 notify = "8"
 wattdrive-domain.workspace = true

@@ -124,9 +124,11 @@ mod tests {
                 trust_token: "tt".into(),
             })
             .unwrap();
-        let mut session = SavedSession::default();
-        session.trust_token = "tt".into();
-        session.scnt = "s".into();
+        let session = SavedSession {
+            trust_token: "tt".into(),
+            scnt: "s".into(),
+            ..SavedSession::default()
+        };
         store.save_session(&session).unwrap();
         // neither save clobbers the other
         assert_eq!(store.load_credentials().unwrap().unwrap().apple_id, "a@b.c");
