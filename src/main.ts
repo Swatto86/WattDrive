@@ -474,7 +474,11 @@ void listen<string>("auth-progress", (e) => {
 });
 
 async function boot(): Promise<void> {
-  render(await invoke<Status>("get_status"));
+  const initial = await invoke<Status>("get_status");
+  // Every section starts hidden; pick the first view explicitly. render()
+  // only switches views on the signed-in / signed-out transitions.
+  show(initial.signedIn ? "view-main" : "view-signin");
+  render(initial);
   const hidden = await invoke<boolean>("started_hidden");
   if (!hidden) await getCurrentWindow().show();
   setTimeout(() => void checkUpdates(false), 10_000);
