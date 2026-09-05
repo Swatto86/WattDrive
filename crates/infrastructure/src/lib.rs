@@ -5,3 +5,4 @@
 pub mod icloud;
 pub mod session_store;
 pub mod state_db;
+pub mod vault;

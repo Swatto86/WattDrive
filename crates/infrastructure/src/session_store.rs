@@ -1,41 +1,17 @@
-//! OS keyring persistence for the iCloud session and the Apple ID credentials.
-//!
-//! Linux Secret Service (GNOME Keyring / KWallet through libsecret) has no
-//! practical size limit, so each item is one JSON entry. Calls are blocking
-//! D-Bus round-trips: callers wrap them in `spawn_blocking`.
-//!
-//! Every call runs under one process-wide lock. The keyring crate opens a
-//! fresh D-Bus connection per operation, and gnome-keyring-daemon 50.0 aborted
-//! (`gkd_secret_service_get_pkcs11_session: assertion 'client' failed`) when
-//! two of those connections negotiated sessions at the same instant during
-//! WattDrive's first sign-in. Serialising our side removes that trigger.
+//! Persistence for the iCloud session and the Apple ID credentials: one
+//! encrypted file (see [`crate::vault`]) whose key lives in the OS keyring.
+//! Writes are serialised so a session save and a credentials save cannot
+//! interleave.
 
-use std::sync::{Mutex, MutexGuard};
+use std::path::PathBuf;
+use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
-static KEYRING_LOCK: Mutex<()> = Mutex::new(());
-
-fn serialised() -> MutexGuard<'static, ()> {
-    KEYRING_LOCK
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
 
 use crate::icloud::SavedSession;
+use crate::vault::{Vault, VaultError};
 
-const SERVICE: &str = "WattDrive";
-const SESSION_ENTRY: &str = "icloud-session";
-const CREDENTIALS_ENTRY: &str = "icloud-credentials";
-
-#[derive(Debug, Error)]
-pub enum StoreError {
-    #[error("keyring: {0}")]
-    Keyring(#[from] keyring::Error),
-    #[error("stored value is not valid JSON: {0}")]
-    Json(#[from] serde_json::Error),
-}
+pub type StoreError = VaultError;
 
 /// The Apple ID and password, kept so the app can renew its session without
 /// asking again (Apple's web session needs the password for SRP; the trust
@@ -44,9 +20,8 @@ pub enum StoreError {
 pub struct StoredCredentials {
     pub apple_id: String,
     pub password: String,
-    /// Apple's 30-day two-factor trust token, duplicated here from the session
-    /// item: if the session item is lost, this still lets the next sign-in
-    /// skip the second factor.
+    /// Apple's 30-day two-factor trust token, duplicated from the session so a
+    /// lost or reset session never costs a second factor.
     #[serde(default)]
     pub trust_token: String,
 }
@@ -56,68 +31,109 @@ impl std::fmt::Debug for StoredCredentials {
         f.debug_struct("StoredCredentials")
             .field("apple_id", &self.apple_id)
             .field("password", &"<redacted>")
+            .field(
+                "trust_token",
+                &format!("<{} chars>", self.trust_token.len()),
+            )
             .finish()
     }
 }
 
-pub struct SessionStore;
+#[derive(Default, Serialize, Deserialize)]
+struct Secrets {
+    credentials: Option<StoredCredentials>,
+    session: Option<SavedSession>,
+}
+
+pub struct SessionStore {
+    vault: Vault,
+    lock: Mutex<()>,
+}
 
 impl SessionStore {
-    fn entry(name: &str) -> Result<keyring::Entry, keyring::Error> {
-        keyring::Entry::new(SERVICE, name)
+    /// Open the store whose file is `path`. Performs the vault's single
+    /// keyring read (plus a write on first run).
+    pub fn open(path: PathBuf) -> Result<Self, StoreError> {
+        Ok(Self {
+            vault: Vault::open(path)?,
+            lock: Mutex::new(()),
+        })
     }
 
-    fn load<T: for<'de> Deserialize<'de>>(name: &str) -> Result<Option<T>, StoreError> {
-        let _one_at_a_time = serialised();
-        match Self::entry(name)?.get_password() {
-            // An item whose secret came back blank (seen once after a keyring
-            // daemon crash) is treated as absent, not as corrupt.
-            Ok(json) if json.trim().is_empty() => Ok(None),
-            Ok(json) => Ok(Some(serde_json::from_str(&json)?)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.into()),
+    /// A store with a caller-supplied key (tests).
+    pub fn with_key(path: PathBuf, key: [u8; 32]) -> Self {
+        Self {
+            vault: Vault::with_key(path, key),
+            lock: Mutex::new(()),
         }
     }
 
-    fn save<T: Serialize>(name: &str, value: &T) -> Result<(), StoreError> {
-        let _one_at_a_time = serialised();
-        Ok(Self::entry(name)?.set_password(&serde_json::to_string(value)?)?)
+    fn read(&self) -> Result<Secrets, StoreError> {
+        Ok(self.vault.load()?.unwrap_or_default())
     }
 
-    fn delete(name: &str) -> Result<(), StoreError> {
-        let _one_at_a_time = serialised();
-        match Self::entry(name)?.delete_credential() {
-            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.into()),
-        }
+    fn update(&self, f: impl FnOnce(&mut Secrets)) -> Result<(), StoreError> {
+        let _serialised = self.lock.lock().unwrap_or_else(|p| p.into_inner());
+        // A corrupt file must not block signing in again: start from empty.
+        let mut secrets = self.read().unwrap_or_else(|e| {
+            tracing::warn!("secrets file unreadable, starting afresh: {e}");
+            Secrets::default()
+        });
+        f(&mut secrets);
+        self.vault.save(&secrets)
     }
 
-    pub fn load_session() -> Result<Option<SavedSession>, StoreError> {
-        Self::load(SESSION_ENTRY)
+    pub fn load_session(&self) -> Result<Option<SavedSession>, StoreError> {
+        let _serialised = self.lock.lock().unwrap_or_else(|p| p.into_inner());
+        Ok(self.read()?.session)
     }
 
-    pub fn save_session(session: &SavedSession) -> Result<(), StoreError> {
-        Self::save(SESSION_ENTRY, session)
+    pub fn save_session(&self, session: &SavedSession) -> Result<(), StoreError> {
+        self.update(|s| s.session = Some(session.clone()))
     }
 
-    pub fn load_credentials() -> Result<Option<StoredCredentials>, StoreError> {
-        Self::load(CREDENTIALS_ENTRY)
+    pub fn load_credentials(&self) -> Result<Option<StoredCredentials>, StoreError> {
+        let _serialised = self.lock.lock().unwrap_or_else(|p| p.into_inner());
+        Ok(self.read()?.credentials)
     }
 
-    pub fn save_credentials(creds: &StoredCredentials) -> Result<(), StoreError> {
-        Self::save(CREDENTIALS_ENTRY, creds)
+    pub fn save_credentials(&self, creds: &StoredCredentials) -> Result<(), StoreError> {
+        self.update(|s| s.credentials = Some(creds.clone()))
     }
 
-    /// Sign out: remove both entries.
-    pub fn clear() -> Result<(), StoreError> {
-        Self::delete(SESSION_ENTRY)?;
-        Self::delete(CREDENTIALS_ENTRY)
+    /// Sign out: remove the whole file.
+    pub fn clear(&self) -> Result<(), StoreError> {
+        let _serialised = self.lock.lock().unwrap_or_else(|p| p.into_inner());
+        self.vault.clear()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credentials_and_session_live_side_by_side() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = SessionStore::with_key(dir.path().join("secrets.bin"), [9u8; 32]);
+        assert!(store.load_session().unwrap().is_none());
+        store
+            .save_credentials(&StoredCredentials {
+                apple_id: "a@b.c".into(),
+                password: "p".into(),
+                trust_token: "tt".into(),
+            })
+            .unwrap();
+        let mut session = SavedSession::default();
+        session.trust_token = "tt".into();
+        session.scnt = "s".into();
+        store.save_session(&session).unwrap();
+        // neither save clobbers the other
+        assert_eq!(store.load_credentials().unwrap().unwrap().apple_id, "a@b.c");
+        assert_eq!(store.load_session().unwrap().unwrap().scnt, "s");
+        store.clear().unwrap();
+        assert!(store.load_credentials().unwrap().is_none());
+    }
 
     #[test]
     fn credentials_without_a_trust_token_still_load() {
@@ -135,6 +151,6 @@ mod tests {
         };
         let dbg = format!("{c:?}");
         assert!(dbg.contains("a@b.c"));
-        assert!(!dbg.contains("hunter2"));
+        assert!(!dbg.contains("hunter2") && !dbg.contains("\"tt\""));
     }
 }

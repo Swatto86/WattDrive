@@ -73,20 +73,26 @@ pub fn run() {
     let loaded = settings::load();
     let start_hidden = std::env::args().any(|arg| arg == HIDDEN_FLAG);
 
-    // Keyring reads are blocking D-Bus calls; fine here, before the runtime.
-    let saved = SessionStore::load_session().unwrap_or_else(|e| {
+    // One keyring read (the vault key), before the runtime; everything else
+    // is the encrypted secrets file.
+    let store = match SessionStore::open(paths::secrets_path()) {
+        Ok(s) => Arc::new(s),
+        Err(e) => fail(&format!("cannot open the secrets store: {e}")),
+    };
+    session_saver::init(store.clone());
+    let saved = store.load_session().unwrap_or_else(|e| {
         tracing::warn!("could not read saved session: {e}");
         None
     });
-    let stored = SessionStore::load_credentials().unwrap_or_else(|e| {
+    let stored = store.load_credentials().unwrap_or_else(|e| {
         tracing::warn!("could not read saved credentials: {e}");
         None
     });
-    // A lost session item must not cost a second factor: seed the trust token
-    // from the credentials item so the silent re-sign-in is trusted.
+    // A lost session must not cost a second factor: seed the trust token
+    // from the credentials so the silent re-sign-in is trusted.
     let saved = match (saved, &stored) {
         (None, Some(c)) if !c.trust_token.is_empty() => {
-            tracing::info!("session item missing; re-signing in with the saved trust token");
+            tracing::info!("session missing; re-signing in with the saved trust token");
             Some(wattdrive_infrastructure::icloud::SavedSession {
                 trust_token: c.trust_token.clone(),
                 ..Default::default()
@@ -133,6 +139,7 @@ pub fn run() {
             );
             app.manage(AppState {
                 client: client.clone(),
+                store: store.clone(),
                 runner,
                 settings: SettingsState(RwLock::new(loaded.clone())),
                 state_db: state_db.clone(),

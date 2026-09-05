@@ -20,6 +20,10 @@ pub fn state_db_path() -> PathBuf {
     data_dir().join("sync.db")
 }
 
+pub fn secrets_path() -> PathBuf {
+    data_dir().join("secrets.bin")
+}
+
 pub fn log_path() -> PathBuf {
     data_dir().join("wattdrive.log")
 }

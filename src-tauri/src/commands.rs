@@ -18,6 +18,7 @@ use crate::sync_runner::{Command, SyncRunner};
 
 pub struct AppState {
     pub client: Arc<IcloudClient>,
+    pub store: Arc<SessionStore>,
     pub runner: SyncRunner,
     pub settings: SettingsState,
     pub state_db: Arc<SqliteStateStore>,
@@ -67,17 +68,18 @@ async fn persist_sign_in(state: &AppState) -> Result<(), String> {
         .credentials()
         .ok_or_else(|| "sign-in finished without credentials".to_string())?;
     let session = state.client.saved_session();
+    let store = state.store.clone();
     tokio::task::spawn_blocking(move || {
-        SessionStore::save_credentials(&StoredCredentials {
+        store.save_credentials(&StoredCredentials {
             apple_id: creds.apple_id,
             password: creds.password,
             trust_token: session.trust_token.clone(),
         })?;
-        SessionStore::save_session(&session)
+        store.save_session(&session)
     })
     .await
     .map_err(|e| e.to_string())?
-    .map_err(|e| format!("could not store the session in the keyring: {e}"))?;
+    .map_err(|e| format!("could not store the session: {e}"))?;
     state.runner.send(Command::SignedIn);
     Ok(())
 }
@@ -198,7 +200,8 @@ pub async fn submit_sms_code(
 pub async fn sign_out(state: State<'_, AppState>) -> Result<(), String> {
     state.client.sign_out();
     state.runner.send(Command::SignedOut);
-    tokio::task::spawn_blocking(SessionStore::clear)
+    let store = state.store.clone();
+    tokio::task::spawn_blocking(move || store.clear())
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;

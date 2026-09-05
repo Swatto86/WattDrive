@@ -33,6 +33,7 @@ unicode-normalization = "0.1"
 mime_guess = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
 keyring = { version = "3", features = ["sync-secret-service"] }
+aes-gcm = "0.10"
 bytes = "1"
 futures-util = { version = "0.3", default-features = false }
 tokio-util = { version = "0.7", features = ["io"] }
