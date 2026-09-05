@@ -174,6 +174,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
             commands::sign_in,
+            commands::resume_sign_in,
             commands::submit_code,
             commands::request_sms,
             commands::submit_sms_code,

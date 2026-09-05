@@ -144,7 +144,9 @@ app.innerHTML = `
           <button id="btn-pause" class="btn btn-sm">Pause</button>
         </div>
         <div id="signin-needed" class="hidden" style="margin-top:12px">
-          <button id="btn-resignin" class="btn btn-sm btn-warning">Sign in again</button>
+          <button id="btn-resume" class="btn btn-sm btn-warning">Continue with saved password</button>
+          <button id="btn-resignin" class="btn btn-sm btn-ghost">Sign in with a different password</button>
+          <span id="resume-error" class="error" style="margin-left:8px"></span>
         </div>
         <progress id="progress" class="progress progress-info w-full hidden" style="margin-top:12px"></progress>
       </div>
@@ -278,6 +280,35 @@ function busy(btn: HTMLButtonElement, on: boolean, label: string): void {
   btn.textContent = on ? "Please wait…" : label;
 }
 
+function afterSignIn(result: SignInResult): void {
+  if (result.step === "needsCode") {
+    phones = result.phones;
+    const sel = $<HTMLSelectElement>("sms-phone");
+    sel.innerHTML = phones.map((p) => `<option value="${p.id}">${p.number}</option>`).join("");
+    $("sms-row").classList.toggle("hidden", phones.length === 0);
+    $("code-error").textContent = "";
+    $("code-progress").textContent = "";
+    $<HTMLInputElement>("code").value = "";
+    show("view-code");
+    $("code").focus();
+  } else {
+    show("view-main");
+  }
+}
+
+async function doResume(): Promise<void> {
+  const btn = $<HTMLButtonElement>("btn-resume");
+  $("resume-error").textContent = "";
+  busy(btn, true, "Continue with saved password");
+  try {
+    afterSignIn(await invoke<SignInResult>("resume_sign_in"));
+  } catch (e) {
+    $("resume-error").textContent = String(e);
+  } finally {
+    busy(btn, false, "Continue with saved password");
+  }
+}
+
 async function doSignIn(): Promise<void> {
   const btn = $<HTMLButtonElement>("btn-signin");
   $("signin-error").textContent = "";
@@ -288,19 +319,7 @@ async function doSignIn(): Promise<void> {
       password: $<HTMLInputElement>("password").value,
     });
     $<HTMLInputElement>("password").value = "";
-    if (result.step === "needsCode") {
-      phones = result.phones;
-      const sel = $<HTMLSelectElement>("sms-phone");
-      sel.innerHTML = phones.map((p) => `<option value="${p.id}">${p.number}</option>`).join("");
-      $("sms-row").classList.toggle("hidden", phones.length === 0);
-      $("code-error").textContent = "";
-      $("code-progress").textContent = "";
-      $<HTMLInputElement>("code").value = "";
-      show("view-code");
-      $("code").focus();
-    } else {
-      show("view-main");
-    }
+    afterSignIn(result);
   } catch (e) {
     $("signin-error").textContent = String(e);
   } finally {
@@ -411,6 +430,7 @@ $("btn-sms").addEventListener("click", () => void doSms());
 $("btn-code-back").addEventListener("click", () => show("view-signin"));
 $("btn-sync").addEventListener("click", () => void invoke("sync_now"));
 $("btn-pause").addEventListener("click", () => void togglePause());
+$("btn-resume").addEventListener("click", () => void doResume());
 $("btn-resignin").addEventListener("click", () => {
   if (status?.appleId) $<HTMLInputElement>("apple-id").value = status.appleId;
   show("view-signin");

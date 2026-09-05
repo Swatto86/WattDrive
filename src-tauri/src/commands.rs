@@ -122,6 +122,33 @@ pub async fn sign_in(
     }
 }
 
+/// Re-run sign-in with the password already in the keyring (session expired
+/// or lost). Ends signed in, or at the code screen when Apple wants a second
+/// factor.
+#[tauri::command]
+pub async fn resume_sign_in(state: State<'_, AppState>) -> Result<SignInResult, String> {
+    let creds = state
+        .client
+        .credentials()
+        .ok_or_else(|| "No saved sign-in. Enter your Apple Account details.".to_string())?;
+    let step = state.client.sign_in(creds).await.map_err(user_message)?;
+    match step {
+        SignInStep::SignedIn => {
+            persist_sign_in(&state).await?;
+            Ok(SignInResult::SignedIn)
+        }
+        SignInStep::NeedsTwoFactor { phones } => Ok(SignInResult::NeedsCode {
+            phones: phones
+                .into_iter()
+                .map(|p| PhoneDto {
+                    id: p.id,
+                    number: p.number,
+                })
+                .collect(),
+        }),
+    }
+}
+
 fn clean_code(code: &str) -> Result<String, String> {
     let digits: String = code.chars().filter(|c| c.is_ascii_digit()).collect();
     if digits.len() != 6 {
