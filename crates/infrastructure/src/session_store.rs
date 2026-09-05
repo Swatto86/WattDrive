@@ -3,9 +3,25 @@
 //! Linux Secret Service (GNOME Keyring / KWallet through libsecret) has no
 //! practical size limit, so each item is one JSON entry. Calls are blocking
 //! D-Bus round-trips: callers wrap them in `spawn_blocking`.
+//!
+//! Every call runs under one process-wide lock. The keyring crate opens a
+//! fresh D-Bus connection per operation, and gnome-keyring-daemon 50.0 aborted
+//! (`gkd_secret_service_get_pkcs11_session: assertion 'client' failed`) when
+//! two of those connections negotiated sessions at the same instant during
+//! WattDrive's first sign-in. Serialising our side removes that trigger.
+
+use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+
+static KEYRING_LOCK: Mutex<()> = Mutex::new(());
+
+fn serialised() -> MutexGuard<'static, ()> {
+    KEYRING_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 use crate::icloud::SavedSession;
 
@@ -47,6 +63,7 @@ impl SessionStore {
     }
 
     fn load<T: for<'de> Deserialize<'de>>(name: &str) -> Result<Option<T>, StoreError> {
+        let _one_at_a_time = serialised();
         match Self::entry(name)?.get_password() {
             Ok(json) => Ok(Some(serde_json::from_str(&json)?)),
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -55,10 +72,12 @@ impl SessionStore {
     }
 
     fn save<T: Serialize>(name: &str, value: &T) -> Result<(), StoreError> {
+        let _one_at_a_time = serialised();
         Ok(Self::entry(name)?.set_password(&serde_json::to_string(value)?)?)
     }
 
     fn delete(name: &str) -> Result<(), StoreError> {
+        let _one_at_a_time = serialised();
         match Self::entry(name)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(e) => Err(e.into()),

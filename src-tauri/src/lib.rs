@@ -8,6 +8,7 @@ pub mod commands;
 pub mod linux_webkit;
 mod notify;
 mod paths;
+mod session_saver;
 mod settings;
 mod status;
 mod sync_runner;
@@ -90,14 +91,7 @@ pub fn run() {
         Ok(c) => Arc::new(c),
         Err(e) => fail(&format!("cannot create HTTP client: {e}")),
     };
-    client.set_session_hook(Arc::new(|session| {
-        let session = session.clone();
-        std::thread::spawn(move || {
-            if let Err(e) = SessionStore::save_session(&session) {
-                tracing::warn!("could not save session to keyring: {e}");
-            }
-        });
-    }));
+    client.set_session_hook(Arc::new(|session| session_saver::queue(session.clone())));
     let state_db = match SqliteStateStore::open(&paths::state_db_path()) {
         Ok(db) => Arc::new(db),
         Err(e) => fail(&format!("cannot open sync database: {e}")),
