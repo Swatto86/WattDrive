@@ -94,8 +94,6 @@ app.innerHTML = `
 <div class="shell">
   <div id="update-banner" class="update-banner hidden">
     <span id="update-text"></span>
-    <span><button id="update-install" class="btn btn-xs btn-primary">Install and restart</button>
-    <button id="update-later" class="btn btn-xs btn-ghost">Later</button></span>
   </div>
   <div class="topbar">
     <div class="brand"><img src="/icon.png" alt="" /> WattDrive</div>
@@ -404,15 +402,40 @@ async function togglePause(): Promise<void> {
 }
 
 // ---- Updates ----
-let pendingUpdate: Update | null = null;
+// Automatic, like WattMail: a newer signed release is downloaded and installed
+// as soon as it is seen, then the app relaunches. The banner only informs. The
+// install waits for a quiet moment so a sync pass is never cut off mid-file.
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+let installing = false;
+
+function syncing(): boolean {
+  return status?.state === "syncing";
+}
+
+async function installUpdate(upd: Update): Promise<void> {
+  if (installing) return;
+  installing = true;
+  $("update-text").textContent = `WattDrive ${upd.version} is available — downloading and restarting…`;
+  $("update-banner").classList.remove("hidden");
+  try {
+    while (syncing()) {
+      $("update-text").textContent = `WattDrive ${upd.version} downloaded — restarting when the current sync finishes…`;
+      await new Promise((r) => setTimeout(r, 5_000));
+    }
+    await upd.downloadAndInstall();
+    await relaunch();
+  } catch (e) {
+    $("update-text").textContent = `Update failed: ${e}`;
+    installing = false;
+  }
+}
+
 async function checkUpdates(interactive: boolean): Promise<void> {
   try {
     const upd = await check();
     if (upd) {
-      pendingUpdate = upd;
-      $("update-text").textContent = `WattDrive ${upd.version} is available.`;
-      $("update-banner").classList.remove("hidden");
-      if (interactive) $("about-update").textContent = `Version ${upd.version} is available — use the banner to install.`;
+      if (interactive) $("about-update").textContent = `Version ${upd.version} found — installing.`;
+      await installUpdate(upd);
     } else if (interactive) {
       $("about-update").textContent = "You are on the latest version.";
     }
@@ -457,17 +480,6 @@ $("btn-about").addEventListener("click", async () => {
 });
 $("btn-about-back").addEventListener("click", () => show(status?.signedIn ? "view-main" : "view-signin"));
 $("btn-check-update").addEventListener("click", () => void checkUpdates(true));
-$("update-install").addEventListener("click", async () => {
-  if (!pendingUpdate) return;
-  try {
-    await pendingUpdate.downloadAndInstall();
-    await relaunch();
-  } catch (e) {
-    $("update-text").textContent = `Update failed: ${e}`;
-  }
-});
-$("update-later").addEventListener("click", () => $("update-banner").classList.add("hidden"));
-
 void listen<Status>("sync-status", (e) => render(e.payload));
 void listen<string>("auth-progress", (e) => {
   $("code-progress").textContent = e.payload;
@@ -482,5 +494,6 @@ async function boot(): Promise<void> {
   const hidden = await invoke<boolean>("started_hidden");
   if (!hidden) await getCurrentWindow().show();
   setTimeout(() => void checkUpdates(false), 10_000);
+  setInterval(() => void checkUpdates(false), UPDATE_CHECK_INTERVAL_MS);
 }
 void boot();
