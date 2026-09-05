@@ -3,6 +3,7 @@
 //! Wires the iCloud client, the SQLite state store and the sync loop into
 //! Tauri commands, the window and the tray. No sync logic lives here.
 
+mod autostart;
 pub mod commands;
 #[cfg(target_os = "linux")]
 pub mod linux_webkit;
@@ -147,6 +148,7 @@ pub fn run() {
                 state_db: state_db.clone(),
                 start_hidden,
             });
+            autostart::repair_login_entry(&handle);
             #[cfg(target_os = "linux")]
             tray_linux::spawn(handle.clone());
             // Safety net: if the frontend never reveals the window, show it —
@@ -174,9 +176,9 @@ pub fn run() {
                     .and_then(|s| s.settings.0.read().ok().map(|s| s.close_to_tray))
                     .unwrap_or(true);
                 if close_to_tray {
+                    api.prevent_close();
                     USER_HID_WINDOW.store(true, Ordering::SeqCst);
                     let _ = window.hide();
-                    api.prevent_close();
                 }
             }
         })
@@ -195,6 +197,8 @@ pub fn run() {
             commands::open_trash_folder,
             commands::started_hidden,
             commands::app_info,
+            commands::autostart_enabled,
+            commands::set_autostart,
             commands::quit_app,
         ])
         .run(tauri::generate_context!());

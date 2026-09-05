@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::executor::TRASH_DIR_NAME;
 use crate::fake_drive::FakeDrive;
 use crate::local::set_mtime_ms;
+use crate::test_drives::{DropsFolder, Vanishing};
 use crate::{MemoryStateStore, SyncEngine, SyncReport};
 
 struct Rig {
@@ -247,56 +248,6 @@ async fn a_failed_download_is_retried_next_pass_and_leaves_no_partial_file() {
             .id()
             .clone()
     };
-    // Remove the node behind the listing's back so download 404s.
-    struct Vanishing(Arc<FakeDrive>, wattdrive_domain::RemoteId);
-    #[async_trait::async_trait]
-    impl wattdrive_domain::RemoteDrive for Vanishing {
-        fn root(&self) -> wattdrive_domain::RemoteId {
-            self.0.root()
-        }
-        async fn list_children(
-            &self,
-            f: &wattdrive_domain::RemoteId,
-        ) -> Result<Vec<wattdrive_domain::RemoteChild>, wattdrive_domain::DriveError> {
-            self.0.list_children(f).await
-        }
-        async fn download(
-            &self,
-            file: &wattdrive_domain::RemoteFile,
-            dest: &Path,
-        ) -> Result<(), wattdrive_domain::DriveError> {
-            if file.id == self.1 {
-                return Err(wattdrive_domain::DriveError::Api {
-                    status: 500,
-                    message: "boom".into(),
-                });
-            }
-            self.0.download(file, dest).await
-        }
-        async fn upload(
-            &self,
-            p: &wattdrive_domain::RemoteId,
-            n: &str,
-            s: &Path,
-            m: i64,
-        ) -> Result<wattdrive_domain::RemoteFile, wattdrive_domain::DriveError> {
-            self.0.upload(p, n, s, m).await
-        }
-        async fn create_folder(
-            &self,
-            p: &wattdrive_domain::RemoteId,
-            n: &str,
-        ) -> Result<wattdrive_domain::RemoteId, wattdrive_domain::DriveError> {
-            self.0.create_folder(p, n).await
-        }
-        async fn trash(
-            &self,
-            id: &wattdrive_domain::RemoteId,
-            e: &str,
-        ) -> Result<(), wattdrive_domain::DriveError> {
-            self.0.trash(id, e).await
-        }
-    }
     use wattdrive_domain::RemoteDrive;
     // Same records as the first engine: this is the same install seeing a
     // remote edit it cannot fetch.
@@ -327,4 +278,31 @@ async fn a_failed_download_is_retried_next_pass_and_leaves_no_partial_file() {
         b"b",
         "old content untouched"
     );
+}
+
+#[tokio::test]
+async fn a_folder_missing_from_the_listing_stops_the_pass_instead_of_trashing() {
+    let r = rig();
+    r.drive.add_file("Docs/notes.md", b"# notes", T0);
+    r.drive.add_file("Docs/plan.md", b"plan", T0);
+    run(&r.engine).await;
+    let docs_id = r.drive.id_of("Docs").unwrap();
+
+    let partial = SyncEngine::new(
+        r.root.clone(),
+        Arc::new(DropsFolder(r.drive.clone(), docs_id)),
+        r.state.clone(),
+        "testbox".into(),
+    );
+    let Err(err) = partial.run_once(&|_| {}).await else {
+        panic!("pass must fail");
+    };
+    assert!(err.to_string().contains("Docs"), "{err}");
+    assert_eq!(
+        local_names(&r.root),
+        vec!["Docs/notes.md", "Docs/plan.md"],
+        "nothing was moved to the local trash"
+    );
+    assert!(!r.root.join(TRASH_DIR_NAME).exists());
+    assert_eq!(run(&r.engine).await.planned, 0, "state untouched");
 }

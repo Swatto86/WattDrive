@@ -143,6 +143,11 @@ impl FakeDrive {
         Some(inner.nodes[&id].content.clone())
     }
 
+    pub fn id_of(&self, path: &str) -> Option<RemoteId> {
+        let inner = self.lock();
+        Self::find(&inner, path).map(RemoteId)
+    }
+
     pub fn exists(&self, path: &str) -> bool {
         let inner = self.lock();
         Self::find(&inner, path).is_some()

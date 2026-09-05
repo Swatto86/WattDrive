@@ -1,7 +1,7 @@
 {
   "name": "wattdrive",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "WattDrive — iCloud Drive sync for Omarchy (Rust + Tauri, Linux)",
   "author": "Swatto <claude.ai@swatto.co.uk>",
@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.1.1",
-    "@tauri-apps/plugin-autostart": "^2.0.0",
     "@tauri-apps/plugin-process": "^2.2.0",
     "@tauri-apps/plugin-updater": "^2.3.0"
   },

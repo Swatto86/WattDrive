@@ -229,13 +229,12 @@ impl Loop {
 
             if let Some(why) = trigger {
                 next_timer = Instant::now() + Duration::from_secs(self.settings.poll_interval_secs);
-                if !self.signed_in() {
-                    continue;
-                }
-                if self.settings.paused && why != "manual" {
-                    continue;
-                }
-                if matches!(self.status().state, SyncState::SignInRequired) && why == "timer" {
+                if !should_run(
+                    self.signed_in(),
+                    self.settings.paused,
+                    self.status().state,
+                    why,
+                ) {
                     continue;
                 }
                 tracing::info!("sync pass ({why})");
@@ -386,6 +385,19 @@ fn summary_line(r: &SyncReport) -> String {
     }
 }
 
+/// Whether a trigger starts a pass. Paused and sign-in-required states only
+/// yield to an explicit "Sync now": a local file change must not re-run the
+/// failed sign-in (and its desktop notification) on every keystroke.
+fn should_run(signed_in: bool, paused: bool, state: SyncState, why: &str) -> bool {
+    if !signed_in {
+        return false;
+    }
+    if why == "manual" {
+        return true;
+    }
+    !paused && state != SyncState::SignInRequired
+}
+
 /// Skip events for our own temp/trash files so a pass does not retrigger itself.
 fn is_interesting(root: &Path, changed: &Path) -> bool {
     let Ok(rel) = changed.strip_prefix(root) else {
@@ -416,6 +428,23 @@ mod tests {
             &root.join("Docs/.wattdrive-part-abc")
         ));
         assert!(!is_interesting(&root, Path::new("/elsewhere/a.txt")));
+    }
+
+    #[test]
+    fn only_a_manual_sync_runs_while_paused_or_waiting_for_sign_in() {
+        assert!(should_run(true, false, SyncState::Idle, "timer"));
+        assert!(should_run(true, false, SyncState::Offline, "local change"));
+        assert!(should_run(true, false, SyncState::Error, "folder changed"));
+        assert!(!should_run(false, false, SyncState::Idle, "manual"));
+        for why in ["timer", "local change", "folder changed", "resumed"] {
+            assert!(!should_run(true, true, SyncState::Paused, why), "{why}");
+            assert!(
+                !should_run(true, false, SyncState::SignInRequired, why),
+                "{why}"
+            );
+        }
+        assert!(should_run(true, true, SyncState::Paused, "manual"));
+        assert!(should_run(true, false, SyncState::SignInRequired, "manual"));
     }
 
     #[test]

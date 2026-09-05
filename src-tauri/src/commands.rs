@@ -276,6 +276,18 @@ pub fn app_info(app: AppHandle) -> AppInfo {
 }
 
 #[tauri::command]
+pub fn autostart_enabled(app: AppHandle) -> Result<bool, String> {
+    crate::autostart::is_enabled(&app)
+}
+
+/// Enabling is refused (with the reason for the UI) unless this process is
+/// the installed AppImage, so a handoff binary never becomes the login entry.
+#[tauri::command]
+pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
+    crate::autostart::set_enabled(&app, enabled)
+}
+
+#[tauri::command]
 pub fn quit_app(app: AppHandle) {
     app.exit(0);
 }

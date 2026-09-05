@@ -3,7 +3,7 @@
 > Progress log, decisions, open questions. Update at the end of any session
 > with meaningful changes; newest entries first.
 >
-> **Last updated:** 2026-09-05 (late)
+> **Last updated:** 2026-09-05 (bug sweep, v0.1.2)
 
 ## Overview
 
@@ -43,6 +43,15 @@ decision — no Windows/macOS builds.
   renames; ignored by the scanner via the `.wattdrive` prefix.
 
 ## State (2026-09-05)
+
+- **v0.1.2 (bug sweep, 2026-09-05 evening):** a folder missing from a batched
+  iCloud listing now aborts the pass (`remote_tree::walk`) instead of reading as
+  "deleted on iCloud" and moving its local files to the trash; local file
+  changes no longer re-run a failed sign-in (and its notification) while the
+  app waits for the user — only "Sync now" does; "Start at login" goes through
+  Rust (`autostart.rs`, ported from WattMail) and is refused unless this
+  process is the installed AppImage, with a start-up repair of a stale entry;
+  updates download first and install only once no sync pass is running.
 
 - **v0.1.0 tagged 2026-09-05** on 11e5cf5 after Swatto accepted the debug
   handoff (sign-in, first mirror, two-way uploads/deletes, new icon, batched

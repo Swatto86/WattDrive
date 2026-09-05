@@ -1,6 +1,6 @@
 [package]
 name = "wattdrive-desktop"
-version = "0.1.1"
+version = "0.1.2"
 description = "WattDrive desktop app — iCloud Drive sync for Omarchy"
 edition.workspace = true
 license.workspace = true

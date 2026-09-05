@@ -3,11 +3,6 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
-import {
-  enable as enableAutostart,
-  disable as disableAutostart,
-  isEnabled as isAutostartEnabled,
-} from "@tauri-apps/plugin-autostart";
 import "./styles.css";
 
 // ---- Backend DTOs (mirror src-tauri/src/status.rs, commands.rs, settings.rs) ----
@@ -364,7 +359,7 @@ async function openSettings(): Promise<void> {
   $<HTMLInputElement>("set-tray").checked = s.closeToTray;
   $<HTMLInputElement>("set-notify").checked = s.notificationsEnabled;
   $<HTMLSelectElement>("set-theme").value = themePref();
-  $<HTMLInputElement>("set-autostart").checked = await isAutostartEnabled().catch(() => false);
+  $<HTMLInputElement>("set-autostart").checked = await invoke<boolean>("autostart_enabled").catch(() => false);
   $("settings-error").textContent = "";
   $("btn-signout").classList.toggle("hidden", !status?.signedIn);
   show("view-settings");
@@ -385,10 +380,10 @@ async function saveSettings(): Promise<void> {
     localStorage.setItem(THEME_KEY, pref);
     applyTheme(pref);
     const wantAuto = $<HTMLInputElement>("set-autostart").checked;
-    const haveAuto = await isAutostartEnabled().catch(() => false);
+    const haveAuto = await invoke<boolean>("autostart_enabled").catch(() => false);
     if (wantAuto !== haveAuto) {
-      if (wantAuto) await enableAutostart();
-      else await disableAutostart();
+      // Refused (with the reason) unless this is the installed AppImage.
+      await invoke("set_autostart", { enabled: wantAuto });
     }
     show(status?.signedIn ? "view-main" : "view-signin");
   } catch (e) {
@@ -415,14 +410,16 @@ function syncing(): boolean {
 async function installUpdate(upd: Update): Promise<void> {
   if (installing) return;
   installing = true;
-  $("update-text").textContent = `WattDrive ${upd.version} is available — downloading and restarting…`;
+  $("update-text").textContent = `WattDrive ${upd.version} is available — downloading…`;
   $("update-banner").classList.remove("hidden");
   try {
+    await upd.download();
     while (syncing()) {
       $("update-text").textContent = `WattDrive ${upd.version} downloaded — restarting when the current sync finishes…`;
       await new Promise((r) => setTimeout(r, 5_000));
     }
-    await upd.downloadAndInstall();
+    $("update-text").textContent = `WattDrive ${upd.version} downloaded — installing and restarting…`;
+    await upd.install();
     await relaunch();
   } catch (e) {
     $("update-text").textContent = `Update failed: ${e}`;

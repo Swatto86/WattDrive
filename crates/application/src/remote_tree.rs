@@ -1,6 +1,6 @@
 //! Walk iCloud Drive into a path-keyed tree, one batched listing per level.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use wattdrive_domain::{DriveError, RelPath, RemoteDrive, RemoteId, RemoteNode};
 
@@ -24,12 +24,23 @@ pub async fn walk(drive: &dyn RemoteDrive) -> Result<RemoteTree, DriveError> {
         let paths: HashMap<RemoteId, Option<RelPath>> =
             frontier.drain(..).map(|(p, id)| (id, p)).collect();
         let listings = drive.list_children_many(&ids).await?;
-        if listings.len() != ids.len() {
-            tracing::warn!(
-                "iCloud returned {} folder listings for {} requested",
-                listings.len(),
-                ids.len()
-            );
+        // A folder we asked about but got no listing for must stop the pass:
+        // treating its children as absent would read as "deleted on iCloud"
+        // and trash their local copies.
+        let listed: HashSet<&RemoteId> = listings.iter().map(|(id, _)| id).collect();
+        if let Some(missing) = ids.iter().find(|id| !listed.contains(id)) {
+            let path = paths
+                .get(missing)
+                .and_then(|p| p.as_ref().map(ToString::to_string))
+                .unwrap_or_else(|| "the root folder".to_string());
+            return Err(DriveError::Api {
+                status: 200,
+                message: format!(
+                    "iCloud returned {} of {} folder listings; no listing for {path}",
+                    listings.len(),
+                    ids.len()
+                ),
+            });
         }
 
         for (folder_id, children) in listings {

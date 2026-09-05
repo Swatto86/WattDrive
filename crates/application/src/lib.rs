@@ -16,6 +16,8 @@ mod state;
 mod engine_tests;
 #[cfg(test)]
 mod fake_drive;
+#[cfg(test)]
+mod test_drives;
 
 pub use engine::{ActionFailure, Progress, SyncEngine, SyncReport};
 pub use state::{MemoryStateStore, StateError, StateStore};
