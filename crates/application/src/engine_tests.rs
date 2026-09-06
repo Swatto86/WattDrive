@@ -9,7 +9,7 @@ use crate::executor::TRASH_DIR_NAME;
 use crate::fake_drive::FakeDrive;
 use crate::local::set_mtime_ms;
 use crate::test_drives::{DropsFolder, Vanishing};
-use crate::{MemoryStateStore, SyncEngine, SyncReport};
+use crate::{MemoryStateStore, StateStore, SyncEngine, SyncReport};
 
 struct Rig {
     _dir: tempfile::TempDir,
@@ -305,4 +305,72 @@ async fn a_folder_missing_from_the_listing_stops_the_pass_instead_of_trashing() 
     );
     assert!(!r.root.join(TRASH_DIR_NAME).exists());
     assert_eq!(run(&r.engine).await.planned, 0, "state untouched");
+}
+
+#[tokio::test]
+async fn truncated_download_keeps_original_and_retries() {
+    let r = rig();
+    r.drive.add_file("a.txt", b"original", T0);
+    run(&r.engine).await;
+    let before = r.state.load_all().await.unwrap();
+    r.drive.edit_file("a.txt", b"replacement", T0 + 5000);
+    r.drive
+        .truncate_download
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let report = r.engine.run_once(&|_| {}).await.unwrap();
+    assert_eq!(report.failures.len(), 1);
+    assert_eq!(report.downloaded, 0);
+    assert_eq!(std::fs::read(r.root.join("a.txt")).unwrap(), b"original");
+    assert_eq!(r.state.load_all().await.unwrap(), before);
+    assert_eq!(std::fs::read_dir(&r.root).unwrap().count(), 1);
+    r.drive
+        .truncate_download
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(run(&r.engine).await.downloaded, 1);
+    assert_eq!(
+        std::fs::read(r.root.join("a.txt")).unwrap(),
+        b"replacement"
+    );
+}
+
+#[tokio::test]
+async fn failed_conflict_preservation_stops_before_overwrite() {
+    let r = rig();
+    r.drive.add_file("a.txt", b"original", T0);
+    run(&r.engine).await;
+    write_local(&r.root, "a.txt", b"local edit", T0 + 5000);
+    r.drive.edit_file("a.txt", b"remote edit", T0 + 9000);
+    // The invalid conflict destination deterministically makes rename fail.
+    let engine = SyncEngine::new(
+        r.root.clone(),
+        r.drive.clone(),
+        r.state.clone(),
+        "missing/parent".into(),
+    );
+    let report = engine.run_once(&|_| {}).await.unwrap();
+    assert!(report.aborted.is_some());
+    assert_eq!(report.downloaded, 0);
+    assert_eq!(std::fs::read(r.root.join("a.txt")).unwrap(), b"local edit");
+}
+
+#[tokio::test]
+async fn folder_replaced_by_remote_file_preserves_its_entire_subtree() {
+    let r = rig();
+    r.drive.add_file("Docs/sub/a.txt", b"original", T0);
+    run(&r.engine).await;
+    write_local(&r.root, "Docs/sub/a.txt", b"local edit", T0 + 5000);
+    r.drive.remove("Docs");
+    r.drive.add_file("Docs", b"remote file", T0 + 9000);
+    let report = run(&r.engine).await;
+    assert_eq!(report.conflicts, 1);
+    assert_eq!(report.downloaded, 1);
+    let names = local_names(&r.root);
+    let copy = names
+        .iter()
+        .find(|name| name.ends_with("/sub/a.txt"))
+        .unwrap();
+    assert_eq!(std::fs::read(r.root.join(copy)).unwrap(), b"local edit");
+    assert_eq!(std::fs::read(r.root.join("Docs")).unwrap(), b"remote file");
+    assert_eq!(run(&r.engine).await.uploaded, 1);
+    assert_eq!(run(&r.engine).await.planned, 0);
 }

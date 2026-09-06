@@ -44,6 +44,24 @@ decision — no Windows/macOS builds.
 
 ## State (2026-09-05)
 
+## 2026-09-06 — Sync data preservation (v0.1.3)
+
+- Reject a download whose byte count differs from the listing before renaming
+  it over the local file. Preserve the previous file/state and retry next pass.
+- Stop a pass when preserving a conflict copy fails; never follow that failed
+  rename with a download over the unpreserved local edit.
+- When a local folder conflicts with a remote file, move its whole subtree
+  aside and do not execute actions against the now-stale child paths. The
+  preserved subtree uploads from its conflict name on the following pass.
+- Persist the account/folder scope of sync records transactionally. Switching
+  either starts a fresh baseline rather than interpreting missing old paths as
+  deletions. The first upgraded pass also re-baselines legacy unscoped records.
+- Added three full-engine regressions and a SQLite scope regression. Includes
+  the upstream v0.1.2 incomplete-listing guard; that fix was already on main.
+- Local frontend build passed. Rust toolchain unavailable here; native fmt,
+  clippy, tests and desktop compilation must pass CI before tagging. No live
+  iCloud account or desktop acceptance test was performed in this environment.
+
 - **v0.1.2 (bug sweep, 2026-09-05 evening):** a folder missing from a batched
   iCloud listing now aborts the pass (`remote_tree::walk`) instead of reading as
   "deleted on iCloud" and moving its local files to the trash; local file

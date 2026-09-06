@@ -266,6 +266,19 @@ impl Loop {
             return;
         }
 
+        let Some(account) = self.client.apple_id() else {
+            self.finish_with_error(DriveError::SignInRequired("No account is signed in".into()));
+            return;
+        };
+        if let Err(e) = self
+            .state_db
+            .bind_scope(&self.settings.sync_folder, &account)
+            .await
+        {
+            self.finish_with_error(DriveError::Other(e.to_string()));
+            return;
+        }
+
         let drive = Arc::new(IcloudDrive::new(self.client.clone()));
         let engine = SyncEngine::new(
             self.settings.sync_folder.clone(),

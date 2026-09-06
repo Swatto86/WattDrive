@@ -158,6 +158,13 @@ impl Executor<'_> {
             } else {
                 self.drive.download(remote, &tmp).await?;
             }
+            let (size, _) = stamp(tmp.clone()).await?;
+            if size != remote.size {
+                return Err(ExecError::Other(format!(
+                    "{path}: downloaded {size} bytes, expected {}",
+                    remote.size
+                )));
+            }
             let mtime = remote.modified_ms;
             let t = tmp.clone();
             blocking(move || local::set_mtime_ms(&t, mtime)).await?;
@@ -170,13 +177,7 @@ impl Executor<'_> {
             return Err(e);
         }
 
-        let (size, mtime) = stamp(final_path).await?;
-        if size != remote.size {
-            tracing::warn!(
-                "{path}: downloaded {size} bytes, iCloud reported {}",
-                remote.size
-            );
-        }
+        let (_, mtime) = stamp(final_path).await?;
         Ok(self
             .state
             .put(path, &SyncEntry::file(remote, mtime))

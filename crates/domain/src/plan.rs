@@ -163,6 +163,7 @@ enum Deferred {
 pub fn plan(input: PlanInput<'_>) -> Vec<SyncAction> {
     let mut actions = Vec::new();
     let mut deferred = Vec::new();
+    let mut moved_folders: Vec<RelPath> = Vec::new();
 
     let paths: BTreeSet<&RelPath> = input
         .remote
@@ -172,8 +173,18 @@ pub fn plan(input: PlanInput<'_>) -> Vec<SyncAction> {
         .collect();
 
     for path in paths {
+        // A kind conflict moves the entire local subtree. Its old paths no
+        // longer exist when actions execute; the copy is scanned next pass.
+        if moved_folders.iter().any(|folder| path.is_inside(folder)) {
+            continue;
+        }
         let remote = input.remote.get(path);
         let local = input.local.get(path);
+        if matches!(remote, Some(RemoteNode::File(_)))
+            && matches!(local, Some(LocalNode::Folder))
+        {
+            moved_folders.push(path.clone());
+        }
         let state = input.state.get(path);
         plan_path(path, remote, local, state, &mut actions, &mut deferred);
     }

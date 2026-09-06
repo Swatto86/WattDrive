@@ -96,6 +96,31 @@ impl SqliteStateStore {
         })
         .await
     }
+
+    /// Records belong to one account and local root. A new scope starts a
+    /// fresh comparison, never interprets the old root's absence as deletion.
+    pub async fn bind_scope(&self, folder: &Path, account: &str) -> Result<(), StateError> {
+        let scope = serde_json::to_string(&(folder, account)).map_err(db_err)?;
+        self.with_conn(move |c| {
+            let tx = c.unchecked_transaction()?;
+            let previous: Option<String> = tx
+                .query_row("SELECT value FROM meta WHERE key = 'sync_scope'", [], |r| {
+                    r.get(0)
+                })
+                .optional()?;
+            if previous.as_deref() != Some(scope.as_str()) {
+                tx.execute("DELETE FROM entries", [])?;
+                tx.execute("DELETE FROM meta WHERE key = 'last_sync'", [])?;
+                tx.execute(
+                    "INSERT INTO meta (key, value) VALUES ('sync_scope', ?1)
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    params![scope],
+                )?;
+            }
+            tx.commit()
+        })
+        .await
+    }
 }
 
 fn kind_str(k: ItemKind) -> &'static str {
@@ -202,6 +227,29 @@ impl StateStore for SqliteStateStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn changing_scope_discards_old_deletion_baseline() {
+        let store = SqliteStateStore::in_memory().unwrap();
+        let folder = std::path::Path::new("/sync/a");
+        store.bind_scope(folder, "a@example.com").await.unwrap();
+        let path = p("important");
+        let entry = entry("file");
+        store.put(&path, &entry).await.unwrap();
+        store.bind_scope(folder, "a@example.com").await.unwrap();
+        assert_eq!(store.load_all().await.unwrap().len(), 1);
+        store
+            .bind_scope(std::path::Path::new("/sync/b"), "a@example.com")
+            .await
+            .unwrap();
+        assert!(store.load_all().await.unwrap().is_empty());
+        store.put(&path, &entry).await.unwrap();
+        store
+            .bind_scope(std::path::Path::new("/sync/b"), "b@example.com")
+            .await
+            .unwrap();
+        assert!(store.load_all().await.unwrap().is_empty());
+    }
 
     fn p(s: &str) -> RelPath {
         RelPath::new(s).unwrap()

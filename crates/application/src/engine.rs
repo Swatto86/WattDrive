@@ -134,7 +134,10 @@ impl SyncEngine {
                     if let crate::executor::ExecError::Drive(DriveError::SignInRequired(m)) = e {
                         return Err(DriveError::SignInRequired(m));
                     }
-                    let aborts = e.aborts_pass();
+                    // A failed prerequisite must never be followed by the
+                    // download that would overwrite the unpreserved original.
+                    let aborts = e.aborts_pass()
+                        || matches!(action, SyncAction::MoveLocalAside { .. });
                     report.failures.push(ActionFailure {
                         path: action.path().to_string(),
                         action: action_name(action).to_string(),

@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use async_trait::async_trait;
@@ -29,6 +30,7 @@ struct Inner {
 #[derive(Default)]
 pub struct FakeDrive {
     inner: Mutex<Inner>,
+    pub truncate_download: AtomicBool,
 }
 
 const ROOT: &str = "FOLDER::fake::root";
@@ -215,7 +217,7 @@ impl RemoteDrive for FakeDrive {
     }
 
     async fn download(&self, file: &RemoteFile, dest: &Path) -> Result<(), DriveError> {
-        let content = {
+        let mut content = {
             let inner = self.lock();
             inner
                 .nodes
@@ -226,6 +228,9 @@ impl RemoteDrive for FakeDrive {
                     message: "no such file".into(),
                 })?
         };
+        if self.truncate_download.load(Ordering::SeqCst) {
+            content.pop();
+        }
         std::fs::write(dest, content)?;
         Ok(())
     }
