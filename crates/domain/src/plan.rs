@@ -180,9 +180,7 @@ pub fn plan(input: PlanInput<'_>) -> Vec<SyncAction> {
         }
         let remote = input.remote.get(path);
         let local = input.local.get(path);
-        if matches!(remote, Some(RemoteNode::File(_)))
-            && matches!(local, Some(LocalNode::Folder))
-        {
+        if matches!(remote, Some(RemoteNode::File(_))) && matches!(local, Some(LocalNode::Folder)) {
             moved_folders.push(path.clone());
         }
         let state = input.state.get(path);

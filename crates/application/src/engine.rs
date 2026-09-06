@@ -136,8 +136,8 @@ impl SyncEngine {
                     }
                     // A failed prerequisite must never be followed by the
                     // download that would overwrite the unpreserved original.
-                    let aborts = e.aborts_pass()
-                        || matches!(action, SyncAction::MoveLocalAside { .. });
+                    let aborts =
+                        e.aborts_pass() || matches!(action, SyncAction::MoveLocalAside { .. });
                     report.failures.push(ActionFailure {
                         path: action.path().to_string(),
                         action: action_name(action).to_string(),

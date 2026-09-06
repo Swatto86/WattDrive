@@ -327,10 +327,7 @@ async fn truncated_download_keeps_original_and_retries() {
         .truncate_download
         .store(false, std::sync::atomic::Ordering::SeqCst);
     assert_eq!(run(&r.engine).await.downloaded, 1);
-    assert_eq!(
-        std::fs::read(r.root.join("a.txt")).unwrap(),
-        b"replacement"
-    );
+    assert_eq!(std::fs::read(r.root.join("a.txt")).unwrap(), b"replacement");
 }
 
 #[tokio::test]
