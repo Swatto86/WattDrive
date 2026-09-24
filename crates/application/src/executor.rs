@@ -142,6 +142,16 @@ impl Executor<'_> {
         self.forget(path, kind).await
     }
 
+    async fn upload_new(
+        &self,
+        path: &RelPath,
+        src: &Path,
+        mtime: i64,
+    ) -> Result<RemoteFile, ExecError> {
+        let parent = self.parent_id(path)?;
+        Ok(self.drive.upload(&parent, path.name(), src, mtime).await?)
+    }
+
     async fn download(&self, path: &RelPath, remote: &RemoteFile) -> Result<(), ExecError> {
         let final_path = self.abs(path);
         let dir = final_path
@@ -149,6 +159,11 @@ impl Executor<'_> {
             .ok_or_else(|| ExecError::Other(format!("{path} has no parent directory")))?;
         tokio::fs::create_dir_all(dir).await?;
         let tmp = dir.join(format!("{PARTIAL_PREFIX}{}", uuid::Uuid::new_v4().simple()));
+        let prior = match stamp(final_path.clone()).await {
+            Ok(stamp) => Some(stamp),
+            Err(ExecError::Io(e)) if e.kind() == io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e),
+        };
 
         let result = async {
             // iCloud's content service answers 400 for an empty document; an
@@ -164,6 +179,24 @@ impl Executor<'_> {
                     "{path}: downloaded {size} bytes, expected {}",
                     remote.size
                 )));
+            }
+            // The plan is stale if the local file appeared or was saved while
+            // the bytes were in flight. Leave it for the next pass to conflict
+            // rather than renaming over the edit.
+            match prior {
+                Some(before) => {
+                    if stamp(final_path.clone()).await? != before {
+                        return Err(ExecError::Other(format!(
+                            "{path}: local file changed during download"
+                        )));
+                    }
+                }
+                None if tokio::fs::try_exists(&final_path).await? => {
+                    return Err(ExecError::Other(format!(
+                        "{path}: local file appeared during download"
+                    )));
+                }
+                None => {}
             }
             let mtime = remote.modified_ms;
             let t = tmp.clone();
@@ -187,11 +220,23 @@ impl Executor<'_> {
     async fn upload(&self, path: &RelPath, replaces: Option<&RemoteFile>) -> Result<(), ExecError> {
         let src = self.abs(path);
         let (size, mtime) = stamp(src.clone()).await?;
+        // iCloud needs the previous version trashed before the new bytes can
+        // take the same name. If that trash succeeds and the upload then
+        // fails, the record must go too: leaving it would make the next pass
+        // treat the missing remote file as a remote delete and trash the
+        // local copy — both sides gone.
         if let Some(old) = replaces {
             self.drive.trash(&old.id, &old.etag).await?;
         }
-        let parent = self.parent_id(path)?;
-        let remote = self.drive.upload(&parent, path.name(), &src, mtime).await?;
+        let remote = match self.upload_new(path, &src, mtime).await {
+            Ok(remote) => remote,
+            Err(e) => {
+                if replaces.is_some() {
+                    self.state.remove(path).await?;
+                }
+                return Err(e);
+            }
+        };
         if remote.size != size {
             tracing::warn!(
                 "{path}: uploaded {size} bytes, iCloud recorded {}",

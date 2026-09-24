@@ -31,6 +31,9 @@ struct Inner {
 pub struct FakeDrive {
     inner: Mutex<Inner>,
     pub truncate_download: AtomicBool,
+    pub fail_upload: AtomicBool,
+    /// When set, rewrite this local file while a download is in flight.
+    pub rewrite_during_download: Mutex<Option<(std::path::PathBuf, Vec<u8>)>>,
 }
 
 const ROOT: &str = "FOLDER::fake::root";
@@ -231,6 +234,9 @@ impl RemoteDrive for FakeDrive {
         if self.truncate_download.load(Ordering::SeqCst) {
             content.pop();
         }
+        if let Some((path, bytes)) = self.rewrite_during_download.lock().unwrap().take() {
+            std::fs::write(path, bytes)?;
+        }
         std::fs::write(dest, content)?;
         Ok(())
     }
@@ -242,6 +248,9 @@ impl RemoteDrive for FakeDrive {
         src: &Path,
         mtime_ms: i64,
     ) -> Result<RemoteFile, DriveError> {
+        if self.fail_upload.load(Ordering::SeqCst) {
+            return Err(DriveError::Network("upload failed".into()));
+        }
         let content = std::fs::read(src)?;
         let mut inner = self.lock();
         let size = content.len() as u64;

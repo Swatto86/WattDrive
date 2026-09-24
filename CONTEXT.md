@@ -3,7 +3,7 @@
 > Progress log, decisions, open questions. Update at the end of any session
 > with meaningful changes; newest entries first.
 >
-> **Last updated:** 2026-09-05 (bug sweep, v0.1.2)
+> **Last updated:** 2026-09-24 (bug sweep, v0.1.4)
 
 ## Overview
 
@@ -42,7 +42,19 @@ decision — no Windows/macOS builds.
 - **2026-09-05 Local trash inside the sync root.** Guarantees same-filesystem
   renames; ignored by the scanner via the `.wattdrive` prefix.
 
-## State (2026-09-05)
+## State (2026-09-24)
+
+## 2026-09-24 — Bug sweep (v0.1.4)
+
+- A replace upload that trashes the remote file and then fails drops the sync
+  record. The next pass uploads the local file again instead of treating the
+  missing remote copy as a delete and moving the local file to trash.
+- A download does not rename over a local file that appeared or changed while
+  the bytes were in flight; the next pass keeps both.
+- A remote folder that lists itself, and a local directory that is the same
+  inode as an ancestor, are skipped instead of walking forever.
+- A local-change trigger that does not start a pass (paused, signed out, or
+  waiting for sign-in) is forgotten. Leaving it due spun the sync loop.
 
 ## 2026-09-06 — Sync data preservation (v0.1.3)
 

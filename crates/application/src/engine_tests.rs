@@ -371,3 +371,53 @@ async fn folder_replaced_by_remote_file_preserves_its_entire_subtree() {
     assert_eq!(run(&r.engine).await.uploaded, 1);
     assert_eq!(run(&r.engine).await.planned, 0);
 }
+
+#[tokio::test]
+async fn failed_replace_upload_does_not_trash_the_local_file_next_pass() {
+    let r = rig();
+    r.drive.add_file("a.txt", b"original", T0);
+    run(&r.engine).await;
+    write_local(&r.root, "a.txt", b"local edit", T0 + 5000);
+    r.drive
+        .fail_upload
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    let report = r.engine.run_once(&|_| {}).await.unwrap();
+    assert_eq!(report.uploaded, 0);
+    assert_eq!(report.failures.len(), 1);
+    assert!(
+        !r.drive.exists("a.txt"),
+        "the old remote version was trashed"
+    );
+    assert_eq!(std::fs::read(r.root.join("a.txt")).unwrap(), b"local edit");
+    assert!(
+        r.state.load_all().await.unwrap().is_empty(),
+        "the record must not survive, or the next pass deletes the local file"
+    );
+    r.drive
+        .fail_upload
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(run(&r.engine).await.uploaded, 1);
+    assert_eq!(r.drive.read("a.txt").unwrap(), b"local edit");
+    assert_eq!(run(&r.engine).await.planned, 0);
+}
+
+#[tokio::test]
+async fn download_leaves_a_file_that_changed_while_it_was_in_flight() {
+    let r = rig();
+    r.drive.add_file("a.txt", b"original", T0);
+    run(&r.engine).await;
+    r.drive.edit_file("a.txt", b"remote edit", T0 + 5000);
+    *r.drive.rewrite_during_download.lock().unwrap() =
+        Some((r.root.join("a.txt"), b"typed during download".to_vec()));
+    let report = r.engine.run_once(&|_| {}).await.unwrap();
+    assert_eq!(report.downloaded, 0);
+    assert_eq!(report.failures.len(), 1);
+    assert_eq!(
+        std::fs::read(r.root.join("a.txt")).unwrap(),
+        b"typed during download"
+    );
+    let report = run(&r.engine).await;
+    assert_eq!(report.conflicts, 1);
+    assert_eq!(report.downloaded, 1);
+    assert_eq!(std::fs::read(r.root.join("a.txt")).unwrap(), b"remote edit");
+}

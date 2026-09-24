@@ -229,12 +229,19 @@ impl Loop {
 
             if let Some(why) = trigger {
                 next_timer = Instant::now() + Duration::from_secs(self.settings.poll_interval_secs);
-                if !should_run(
+                let will_run = should_run(
                     self.signed_in(),
                     self.settings.paused,
                     self.status().state,
                     why,
-                ) {
+                );
+                if !will_run {
+                    // A due local change that does not start a pass must be
+                    // dropped. Leaving `local_due` in the past makes the next
+                    // iteration sleep for zero and spin.
+                    if forget_unrun_local(why, will_run) {
+                        local_due = None;
+                    }
                     continue;
                 }
                 tracing::info!("sync pass ({why})");
@@ -401,6 +408,10 @@ fn summary_line(r: &SyncReport) -> String {
 /// Whether a trigger starts a pass. Paused and sign-in-required states only
 /// yield to an explicit "Sync now": a local file change must not re-run the
 /// failed sign-in (and its desktop notification) on every keystroke.
+fn forget_unrun_local(why: &str, will_run: bool) -> bool {
+    !will_run && why == "local change"
+}
+
 fn should_run(signed_in: bool, paused: bool, state: SyncState, why: &str) -> bool {
     if !signed_in {
         return false;
@@ -458,6 +469,9 @@ mod tests {
         }
         assert!(should_run(true, true, SyncState::Paused, "manual"));
         assert!(should_run(true, false, SyncState::SignInRequired, "manual"));
+        assert!(forget_unrun_local("local change", false));
+        assert!(!forget_unrun_local("local change", true));
+        assert!(!forget_unrun_local("timer", false));
     }
 
     #[test]

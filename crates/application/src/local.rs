@@ -1,8 +1,9 @@
 //! Local folder scan and the small filesystem helpers the executor needs.
 //! Blocking work runs on the blocking pool; nothing here touches the runtime.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::io;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -15,7 +16,8 @@ use crate::ignore::is_ignored_name;
 pub async fn scan(root: PathBuf) -> io::Result<BTreeMap<RelPath, LocalNode>> {
     tokio::task::spawn_blocking(move || {
         let mut out = BTreeMap::new();
-        scan_dir(&root, None, &mut out)?;
+        let mut seen = HashSet::new();
+        scan_dir(&root, None, &mut seen, &mut out)?;
         Ok(out)
     })
     .await
@@ -25,8 +27,14 @@ pub async fn scan(root: PathBuf) -> io::Result<BTreeMap<RelPath, LocalNode>> {
 fn scan_dir(
     dir: &Path,
     rel: Option<&RelPath>,
+    seen: &mut HashSet<(u64, u64)>,
     out: &mut BTreeMap<RelPath, LocalNode>,
 ) -> io::Result<()> {
+    if let Ok(meta) = std::fs::symlink_metadata(dir) {
+        if meta.is_dir() {
+            seen.insert((meta.dev(), meta.ino()));
+        }
+    }
     for entry in std::fs::read_dir(dir)? {
         let entry = match entry {
             Ok(e) => e,
@@ -58,8 +66,12 @@ fn scan_dir(
             continue;
         }
         if meta.is_dir() {
+            if seen.contains(&(meta.dev(), meta.ino())) {
+                tracing::warn!("skipping cyclic directory {path}");
+                continue;
+            }
             out.insert(path.clone(), LocalNode::Folder);
-            scan_dir(&entry.path(), Some(&path), out)?;
+            scan_dir(&entry.path(), Some(&path), seen, out)?;
         } else if meta.is_file() {
             out.insert(
                 path,

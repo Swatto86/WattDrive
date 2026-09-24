@@ -26,3 +26,6 @@ CONTEXT.md for decisions/state.
 - Inner loop: `npx tauri dev`; handoff: `npx tauri build --debug --no-bundle`
   → copy `src-tauri/target/debug/wattdrive-desktop` to `~/Downloads`.
 - Release: push `v*` tag after CI is green on that SHA (release.yml).
+- 2026-09-24 v0.1.4: failed replace-upload drops the record (no double delete);
+  in-flight local edits are not overwritten; cyclic remote folders and local
+  directory inodes are skipped; a skipped local trigger no longer busy-spins.
