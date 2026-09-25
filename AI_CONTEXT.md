@@ -2,9 +2,10 @@
 
 ## System overview
 
-Two-way iCloud Drive ↔ local folder sync for Linux (Omarchy). Tauri v2 shell,
-Rust workspace, private icloud.com web API. See ARCHITECTURE.md for layers and
-CONTEXT.md for decisions/state.
+Two-way iCloud Drive ↔ local folder sync for Linux. Tauri v2 shell,
+Rust workspace, private icloud.com web API. Shipped as one x86_64 AppImage
+(built with Omarchy in mind; same file on other desktops). See ARCHITECTURE.md
+for layers and CONTEXT.md for decisions/state.
 
 ## Where things are
 
@@ -29,3 +30,7 @@ CONTEXT.md for decisions/state.
 - 2026-09-24 v0.1.4: failed replace-upload drops the record (no double delete);
   in-flight local edits are not overwritten; cyclic remote folders and local
   directory inodes are skipped; a skipped local trigger no longer busy-spins.
+- 2026-09-25: `README.md` is the install and sign-in guide. The only shipped
+  artifact is `WattDrive_<version>_amd64.AppImage` (Linux x86_64). Sign-in is
+  the Apple Account password plus a six-digit code. Secrets live in
+  `secrets.bin`; the keyring holds `vault-key` only.

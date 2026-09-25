@@ -3,7 +3,7 @@
 > Progress log, decisions, open questions. Update at the end of any session
 > with meaningful changes; newest entries first.
 >
-> **Last updated:** 2026-09-24 (bug sweep, v0.1.4)
+> **Last updated:** 2026-09-25 (README install guide)
 
 ## Overview
 
@@ -42,7 +42,14 @@ decision — no Windows/macOS builds.
 - **2026-09-05 Local trash inside the sync root.** Guarantees same-filesystem
   renames; ignored by the scanner via the `.wattdrive` prefix.
 
-## State (2026-09-24)
+## State (2026-09-25)
+
+## 2026-09-25 — README for a new install
+
+- User-facing install, sign-in, settings, and build steps live in `README.md`.
+  The release artifact is the x86_64 AppImage only. Sign-in stays Apple Account
+  password plus the six-digit code; an app-specific password is the wrong
+  credential for this SRP flow. No auth code changed.
 
 ## 2026-09-24 — Bug sweep (v0.1.4)
 
