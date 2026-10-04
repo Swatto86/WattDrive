@@ -110,7 +110,7 @@ pub fn file_stamp(path: &Path) -> io::Result<(u64, i64)> {
 }
 
 /// `name` with a conflict marker before its extension, e.g.
-/// `report.docx` → `report (conflict swatarch 2026-09-05 1412).docx`.
+/// `report.docx` → `report (conflict laptop 2026-09-05 1412).docx`.
 pub fn conflict_name(name: &str, host: &str, now: SystemTime) -> String {
     let stamp = time::OffsetDateTime::from(now)
         .format(&time::macros::format_description!(
