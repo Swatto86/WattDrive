@@ -18,6 +18,8 @@ env:
 jobs:
   dependencies:
     runs-on: ubuntu-22.04
+    env:
+      RUSTC_WRAPPER: ""
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
