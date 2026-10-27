@@ -166,9 +166,9 @@ app.innerHTML = `
           <select id="set-interval" class="select select-bordered select-sm">
             <option value="60">1 minute</option><option value="120">2 minutes</option><option value="300">5 minutes</option>
             <option value="900">15 minutes</option><option value="3600">1 hour</option></select></div>
-        <div class="setting"><div>Start at login (in the tray)</div><input id="set-autostart" type="checkbox" class="toggle toggle-sm" /></div>
-        <div class="setting"><div>Closing the window keeps WattDrive running in the tray</div><input id="set-tray" type="checkbox" class="toggle toggle-sm" /></div>
-        <div class="setting"><div>Desktop notifications for conflicts and sign-in problems</div><input id="set-notify" type="checkbox" class="toggle toggle-sm" /></div>
+        <div class="setting"><label for="set-autostart">Start at login (in the tray)</label><input id="set-autostart" type="checkbox" class="toggle toggle-info shrink-0" /></div>
+        <div class="setting"><label for="set-tray">Closing the window keeps WattDrive running in the tray</label><input id="set-tray" type="checkbox" class="toggle toggle-info shrink-0" /></div>
+        <div class="setting"><label for="set-notify">Desktop notifications for conflicts and sign-in problems</label><input id="set-notify" type="checkbox" class="toggle toggle-info shrink-0" /></div>
         <div class="setting"><div>Theme</div>
           <select id="set-theme" class="select select-bordered select-sm">
             <option value="system">Follow system</option><option value="business">Dark</option><option value="corporate">Light</option></select></div>
