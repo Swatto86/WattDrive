@@ -184,7 +184,7 @@ app.innerHTML = `
       <div class="panel">
         <h2>About WattDrive</h2>
         <p id="about-version" class="muted"></p>
-        <p class="muted">Two-way sync between a local folder and iCloud Drive, for Linux. Talks to the same private
+        <p class="muted">Two-way sync between a local folder and iCloud Drive, for Windows and Linux. Talks to the same private
         endpoints icloud.com uses, so Apple can change them without notice.</p>
         <p class="muted">Log: <code id="about-log"></code></p>
         <p id="about-update" class="muted"></p>
