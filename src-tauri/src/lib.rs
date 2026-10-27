@@ -141,6 +141,20 @@ pub fn run() {
     if let Some(dir) = paths::test_data_dir() {
         for window in &mut context.config_mut().app.windows {
             window.data_directory = Some(dir.join("webview"));
+            // WebView2 150+ ignores driver environment overrides in elevated
+            // hosts (including GitHub runners). Pass them through its API only
+            // in our isolated debug tests; release builds never enter this block.
+            #[cfg(windows)]
+            {
+                window.additional_browser_args =
+                    std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").ok();
+                if let Some(profile) = std::env::var_os("WEBVIEW2_USER_DATA_FOLDER")
+                    .map(std::path::PathBuf::from)
+                    .filter(|path| path.is_absolute())
+                {
+                    window.data_directory = Some(profile);
+                }
+            }
         }
         // Even the opt-in live manifest probe must never install an update.
         updater_plugin = updater_plugin.default_version_comparator(|_, _| false);
