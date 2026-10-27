@@ -10,12 +10,17 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
-  # Linux only (Omarchy/Arch first; any distro with an AppImage runtime).
-  # tauri-action creates the GitHub release, builds the AppImage + .sig and
-  # writes latest.json for the in-app updater. The AppImage is the
-  # self-contained, directly runnable binary.
-  release-linux:
-    runs-on: ubuntu-22.04
+  # Serial writers let tauri-action merge both platforms into latest.json.
+  release:
+    strategy:
+      max-parallel: 1
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            bundles: appimage
+          - os: windows-latest
+            bundles: nsis
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     steps:
@@ -36,6 +41,7 @@ jobs:
           key: release
 
       - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -63,7 +69,25 @@ jobs:
           releaseBody: Automated build of WattDrive ${{ github.ref_name }}.
           releaseDraft: false
           prerelease: false
-          args: --bundles appimage
+          args: --bundles ${{ matrix.bundles }}
+
+      - name: Upload portable Windows executable
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $name = "WattDrive_${version}_x64_portable.exe"
+          Copy-Item target/release/wattdrive-desktop.exe $name
+          gh release upload $env:GITHUB_REF_NAME $name --clobber --repo $env:GITHUB_REPOSITORY
+
+  checksums:
+    needs: release
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
 
       # Single-writer checksum step over every published asset.
       - name: Upload checksums

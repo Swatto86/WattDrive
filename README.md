@@ -1,6 +1,6 @@
 # WattDrive
 
-Two-way iCloud Drive sync for Linux. Sign in with your Apple Account once; a
+Two-way iCloud Drive sync for Windows and Linux. Sign in with your Apple Account once; a
 local folder (by default `~/iCloud Drive`) then mirrors your iCloud Drive both
 ways, the way the Mac client does.
 
@@ -8,10 +8,37 @@ Apple publishes no iCloud Drive API for Linux. WattDrive speaks to the same
 private web endpoints icloud.com itself uses, so Apple can change them without
 notice. When that happens WattDrive stops until it is patched; it never guesses.
 
-Built for Omarchy. The file you install is the same x86_64 AppImage on every
-other Linux desktop.
+Originally built for Omarchy; Windows uses a native tray and Windows Credential
+Manager to protect the same encrypted credential vault.
 
-## Requirements
+## Windows
+
+Windows 10/11 x64 requires the [Microsoft Evergreen WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+Build with the MSVC Rust toolchain, Node.js and `npm ci`, then `npx tauri dev`.
+`npx tauri build --bundles nsis` produces a per-user installer; the standalone
+`target/release/wattdrive-desktop.exe` is also portable with WebView2 installed.
+Windows artifacts will appear on the release page after the first Windows release.
+
+Settings, logs, the sync database and encrypted secrets are in
+`%LOCALAPPDATA%\WattDrive`. The vault key is in Windows Credential Manager.
+The default mirror is `%USERPROFILE%\iCloud Drive`. Use a separate ordinary
+folder, not one managed by Apple's iCloud app or OneDrive. Junctions, symlinks
+and cloud placeholders stop the pass. Names Windows cannot represent, or names
+that differ only by case, also stop the pass before any sync changes; rename
+those items on iCloud or another device to continue.
+
+The tray supports opening the window or mirror, syncing, pausing and quitting.
+Start at login launches hidden and requires a stable installed location outside
+Downloads, temporary folders and build output. Installed Windows copies use the
+signed updater installer; a portable copy may become an installed copy on update.
+
+Run `pwsh scripts/verify.ps1` for the Windows gate. It requires `tauri-driver` and
+an Edge WebDriver matching the installed WebView2 runtime, on PATH or supplied
+through `EDGEDRIVER`. The WebDriver suite isolates its data and exercises boot,
+validation, settings persistence and quit. Synthetic sync passes run in Rust tests;
+real Apple sign-in and live sync still require a manual account check.
+
+## Linux requirements
 
 - Linux on `x86_64`, with a desktop session and D-Bus. The published build is
   that AppImage.
@@ -28,7 +55,7 @@ other Linux desktop.
   (Apple's usual setting). WattDrive asks for the account password, then the
   six-digit code.
 
-## Install
+## Linux install
 
 Download `WattDrive_<version>_amd64.AppImage` and `SHA256SUMS.txt` from the
 [latest release](https://github.com/Swatto86/WattDrive/releases/latest). Check

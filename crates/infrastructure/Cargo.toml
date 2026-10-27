@@ -32,7 +32,7 @@ time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
 unicode-normalization = "0.1"
 mime_guess = "2"
 rusqlite = { version = "0.32", features = ["bundled"] }
-keyring = { version = "3", features = ["sync-secret-service"] }
+keyring = "3"
 aes-gcm = "0.10"
 bytes = "1"
 futures-util = { version = "0.3", default-features = false }
@@ -40,3 +40,9 @@ tokio-util = { version = "0.7", features = ["io"] }
 
 [dev-dependencies]
 tempfile.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service"] }
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }

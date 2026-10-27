@@ -108,13 +108,14 @@ impl Vault {
         tmp.push(".tmp");
         let tmp = PathBuf::from(tmp);
         {
-            use std::os::unix::fs::OpenOptionsExt;
-            let mut file = std::fs::OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .mode(0o600)
-                .open(&tmp)?;
+            let mut options = std::fs::OpenOptions::new();
+            options.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                options.mode(0o600);
+            }
+            let mut file = options.open(&tmp)?;
             std::io::Write::write_all(&mut file, &out)?;
             file.sync_all()?;
         }
@@ -175,11 +176,14 @@ mod tests {
         };
         v.save(&p).unwrap();
         assert_eq!(v.load::<Payload>().unwrap(), Some(p));
-        use std::os::unix::fs::PermissionsExt;
-        assert_eq!(
-            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-            0o600
-        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
         assert!(
             !path.with_extension("bin.tmp").exists(),
             "temp file renamed away"

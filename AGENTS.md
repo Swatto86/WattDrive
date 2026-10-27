@@ -3,8 +3,8 @@
 Two-way iCloud Drive ↔ local folder sync for Linux, built for Swatto's Omarchy box. A Tauri v2
 shell over a Rust workspace (`domain` ← `application` ← `infrastructure`, composed in
 `src-tauri`) that talks to icloud.com's private web API, ported from rclone's iclouddrive backend
-(SRP sign-in, 2FA, drivews/docws). It mirrors WattMail's stack and standards. Linux only by
-decision; the one shipped artifact is `WattDrive_<version>_amd64.AppImage` (x86_64). Public
+(SRP sign-in, 2FA, drivews/docws). It mirrors WattMail's stack and standards. Windows x64 and
+Linux x86_64: NSIS installer + portable EXE, and `WattDrive_<version>_amd64.AppImage`. Public
 repository `Swatto86/WattDrive`, single branch `main`.
 
 ## Build, test, verify
@@ -13,6 +13,15 @@ repository `Swatto86/WattDrive`, single branch `main`.
 - Full gate: `bash scripts/verify.sh`: frontend build, `cargo fmt --check`, clippy with
   `-D warnings`, tests, and agreement of the version in `src-tauri/Cargo.toml`,
   `src-tauri/tauri.conf.json` and `package.json`.
+- Windows gate: `pwsh scripts/verify.ps1`; fast check: `pwsh scripts/fastcheck.ps1`.
+  Both full gates build the debug app and run `node scripts/e2e.mjs` through
+  tauri-driver (WebKitWebDriver + Xvfb on Linux; matching Edge driver on Windows).
+  `EDGEDRIVER` can name the Windows driver. Debug-only `WATTDRIVE_TEST_DATA_DIR`
+  isolates state/webview, bypasses the OS keyring and single-instance guard, and
+  disables autostart and updater endpoints. Release builds ignore it.
+- Windows uses Tauri's native tray, Windows Credential Manager for the vault key,
+  and `%LOCALAPPDATA%\WattDrive` for state. Pre-plan validation rejects unsafe
+  Windows filenames and case collisions; scanning refuses reparse points.
 - Handoff build: `npx tauri build --debug --no-bundle`, then copy `target/debug/wattdrive-desktop`
   to `~/Downloads`. The binary is in the workspace root's `target/`, not `src-tauri/target/`,
   because `src-tauri` is a workspace member.

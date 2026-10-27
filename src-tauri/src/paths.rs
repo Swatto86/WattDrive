@@ -5,9 +5,23 @@
 use std::path::PathBuf;
 
 pub fn data_dir() -> PathBuf {
+    if let Some(path) = test_data_dir() {
+        return path;
+    }
     dirs::data_local_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("WattDrive")
+}
+
+/// Debug-only isolation for the WebDriver suite; release builds ignore it.
+pub fn test_data_dir() -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        std::env::var_os("WATTDRIVE_TEST_DATA_DIR")
+            .map(PathBuf::from)
+            .filter(|p| p.is_absolute())
+    } else {
+        None
+    }
 }
 
 pub fn default_sync_folder() -> PathBuf {
@@ -30,6 +44,12 @@ pub fn log_path() -> PathBuf {
 
 /// Short host name for conflict-copy markers.
 pub fn host_name() -> String {
+    #[cfg(windows)]
+    return std::env::var("COMPUTERNAME")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "windows".to_string());
+    #[cfg(not(windows))]
     std::fs::read_to_string("/etc/hostname")
         .ok()
         .map(|s| s.trim().to_string())

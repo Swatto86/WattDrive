@@ -11,6 +11,8 @@ pub mod ignore;
 pub mod local;
 mod remote_tree;
 mod state;
+#[cfg(any(windows, test))]
+mod windows_paths;
 
 #[cfg(test)]
 mod engine_tests;

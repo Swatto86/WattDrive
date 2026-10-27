@@ -3,13 +3,28 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::io;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use wattdrive_domain::{LocalNode, RelPath};
 
 use crate::ignore::is_ignored_name;
+
+#[cfg(unix)]
+type DirectoryId = (u64, u64);
+#[cfg(not(unix))]
+type DirectoryId = PathBuf;
+
+fn directory_id(path: &Path) -> io::Result<DirectoryId> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let meta = std::fs::symlink_metadata(path)?;
+        Ok((meta.dev(), meta.ino()))
+    }
+    #[cfg(not(unix))]
+    std::fs::canonicalize(path)
+}
 
 /// Snapshot the sync folder. Symlinks are not followed, unreadable entries and
 /// non-UTF-8 names are skipped with a warning, ignored names are dropped.
@@ -27,13 +42,13 @@ pub async fn scan(root: PathBuf) -> io::Result<BTreeMap<RelPath, LocalNode>> {
 fn scan_dir(
     dir: &Path,
     rel: Option<&RelPath>,
-    seen: &mut HashSet<(u64, u64)>,
+    seen: &mut HashSet<DirectoryId>,
     out: &mut BTreeMap<RelPath, LocalNode>,
 ) -> io::Result<()> {
-    if let Ok(meta) = std::fs::symlink_metadata(dir) {
-        if meta.is_dir() {
-            seen.insert((meta.dev(), meta.ino()));
-        }
+    #[cfg(windows)]
+    reject_reparse_point(&std::fs::symlink_metadata(dir)?)?;
+    if !seen.insert(directory_id(dir)?) {
+        return Err(io::Error::other("cyclic local directory"));
     }
     for entry in std::fs::read_dir(dir)? {
         let entry = match entry {
@@ -61,15 +76,13 @@ fn scan_dir(
                 continue;
             }
         };
+        #[cfg(windows)]
+        reject_reparse_point(&meta)?;
         if meta.file_type().is_symlink() {
             tracing::debug!("skipping symlink {}", path);
             continue;
         }
         if meta.is_dir() {
-            if seen.contains(&(meta.dev(), meta.ino())) {
-                tracing::warn!("skipping cyclic directory {path}");
-                continue;
-            }
             out.insert(path.clone(), LocalNode::Folder);
             scan_dir(&entry.path(), Some(&path), seen, out)?;
         } else if meta.is_file() {
@@ -81,6 +94,17 @@ fn scan_dir(
                 },
             );
         }
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn reject_reparse_point(meta: &std::fs::Metadata) -> io::Result<()> {
+    use std::os::windows::fs::MetadataExt;
+    if meta.file_attributes() & 0x400 != 0 {
+        return Err(io::Error::other(
+            "sync folder contains a reparse point; use a separate ordinary local folder",
+        ));
     }
     Ok(())
 }
@@ -146,6 +170,7 @@ mod tests {
         std::fs::write(root.join("Docs/Sub/b.md"), b"# hi").unwrap();
         std::fs::write(root.join(".DS_Store"), b"").unwrap();
         std::fs::write(root.join("Docs/.wattdrive-part-x"), b"partial").unwrap();
+        #[cfg(unix)]
         std::os::unix::fs::symlink(root.join("Docs/a.txt"), root.join("link.txt")).unwrap();
 
         let tree = scan(root.to_path_buf()).await.unwrap();
@@ -173,6 +198,38 @@ mod tests {
         std::fs::write(&f, b"x").unwrap();
         set_mtime_ms(&f, 1_700_000_000_123).unwrap();
         assert_eq!(file_stamp(&f).unwrap(), (1, 1_700_000_000_123));
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn junctions_abort_the_scan_without_following_the_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("mirror");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(&outside).unwrap();
+        std::fs::write(outside.join("keep.txt"), b"untouched").unwrap();
+        let junction = root.join("link");
+        let result = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J"])
+            .arg(&junction)
+            .arg(&outside)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "junction creation failed: {result:?}"
+        );
+        assert!(scan(root)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("reparse point"));
+        assert_eq!(
+            std::fs::read(outside.join("keep.txt")).unwrap(),
+            b"untouched"
+        );
+        std::fs::remove_dir(junction).unwrap();
     }
 
     #[test]

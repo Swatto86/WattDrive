@@ -1,6 +1,7 @@
 //! End-to-end passes against a fake drive and a temp folder: every planner
 //! outcome is exercised through the real executor, so the wiring (paths, temp
 //! files, mtimes, state records) is what gets tested, not the classifier.
+// size-exception: shared synthetic sync rig and end-to-end preservation scenarios.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -43,6 +44,28 @@ async fn run(engine: &SyncEngine) -> SyncReport {
     );
     assert!(report.aborted.is_none());
     report
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn unsafe_windows_names_abort_before_any_changes() {
+    for names in [
+        vec!["NUL.txt"],
+        vec!["a.txt", "A.txt"],
+        vec!["..\\outside.txt"],
+    ] {
+        let r = rig();
+        write_local(&r.root, "keep.txt", b"local", 1_700_000_000_000);
+        for name in names {
+            r.drive.add_file(name, b"remote", 1_700_000_000_000);
+        }
+        assert!(r.engine.run_once(&|_| {}).await.is_err());
+        assert_eq!(std::fs::read(r.root.join("keep.txt")).unwrap(), b"local");
+        assert!(!r.drive.exists("keep.txt"), "no upload before validation");
+        assert_eq!(r.drive.trashed_count(), 0);
+        assert!(r.state.load_all().await.unwrap().is_empty());
+        assert_eq!(std::fs::read_dir(&r.root).unwrap().count(), 1);
+    }
 }
 
 fn write_local(root: &Path, rel: &str, content: &[u8], mtime_ms: i64) {

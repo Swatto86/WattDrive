@@ -28,3 +28,5 @@ if [ "$cargo_version" != "$tauri_version" ] || [ "$cargo_version" != "$npm_versi
   exit 1
 fi
 echo "version agreement OK ($cargo_version)"
+npx tauri build --debug --no-bundle
+node scripts/e2e.mjs

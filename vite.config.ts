@@ -10,7 +10,7 @@ export default defineConfig({
     port: 1430,
     strictPort: true,
     hmr: host ? { protocol: "ws", host, port: 1431 } : undefined,
-    watch: { ignored: ["**/src-tauri/**"] },
+    watch: { ignored: ["**/src-tauri/**", "**/target/**"] },
   },
   build: {
     target: "esnext",

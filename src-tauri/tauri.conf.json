@@ -38,8 +38,8 @@
     "copyright": "© 2026 Swatto",
     "license": "MIT",
     "category": "Utility",
-    "shortDescription": "iCloud Drive sync for Omarchy",
-    "longDescription": "WattDrive — keeps a local folder in two-way sync with iCloud Drive on Linux, built with Rust and Tauri.",
+    "shortDescription": "iCloud Drive sync for Windows and Linux",
+    "longDescription": "WattDrive keeps a local folder in two-way sync with iCloud Drive on Windows and Linux, built with Rust and Tauri.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -4,7 +4,10 @@
 pub fn notify(summary: &str, body: &str) {
     let (summary, body) = (summary.to_string(), body.to_string());
     std::thread::spawn(move || {
-        let result = notify_rust::Notification::new()
+        let mut notification = notify_rust::Notification::new();
+        #[cfg(windows)]
+        notification.app_id("co.swatto.wattdrive");
+        let result = notification
             .appname("WattDrive")
             .summary(&summary)
             .body(&body)

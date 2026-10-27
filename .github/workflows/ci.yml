@@ -17,7 +17,11 @@ env:
 
 jobs:
   verify:
-    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 
@@ -38,6 +42,7 @@ jobs:
       # Tauri's Linux build needs the system webkit/gtk/appindicator libraries;
       # the keyring backend needs libdbus.
       - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -48,7 +53,22 @@ jobs:
             libxdo-dev \
             libsoup-3.0-dev \
             libdbus-1-dev \
-            patchelf
+            patchelf webkit2gtk-driver xvfb
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-binstall
+      - name: Install prebuilt test driver
+        run: cargo binstall --no-confirm --disable-strategies compile tauri-driver@2.0.6
+      - name: Install matching Edge driver
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $runtime = Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft\EdgeWebView\Application" -Directory | Where-Object Name -Match '^\d+\.' | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+          if (-not $runtime) { throw 'WebView2 runtime not found' }
+          Invoke-WebRequest "https://msedgedriver.microsoft.com/$($runtime.Name)/edgedriver_win64.zip" -OutFile "$env:RUNNER_TEMP/driver.zip"
+          Expand-Archive "$env:RUNNER_TEMP/driver.zip" "$env:RUNNER_TEMP/edge-driver"
+          "EDGEDRIVER=$env:RUNNER_TEMP/edge-driver/msedgedriver.exe" >> $env:GITHUB_ENV
 
       - name: Install frontend dependencies
         run: npm ci
@@ -71,3 +91,9 @@ jobs:
       # signing, and updater artifacts belong to the tag-driven release.yml.
       - name: Tauri debug build
         run: npx tauri build --debug --no-bundle
+      - name: WebDriver Windows
+        if: runner.os == 'Windows'
+        run: node scripts/e2e.mjs
+      - name: WebDriver Linux
+        if: runner.os == 'Linux'
+        run: xvfb-run -a node scripts/e2e.mjs

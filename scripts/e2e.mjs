@@ -1,0 +1,90 @@
+import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { spawn } from 'node:child_process';
+import { setTimeout as delay } from 'node:timers/promises';
+import { remote } from 'webdriverio';
+
+const root = await mkdtemp(join(tmpdir(), 'wattdrive-e2e-'));
+const port = 4461;
+const args = ['--port', String(port), '--native-port', '4462'];
+if (process.env.EDGEDRIVER) args.push('--native-driver', process.env.EDGEDRIVER);
+const driver = spawn('tauri-driver', args, {
+  env: { ...process.env, WATTDRIVE_TEST_DATA_DIR: root },
+  stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+});
+let logs = '';
+driver.stdout.on('data', data => { logs += data; });
+driver.stderr.on('data', data => { logs += data; });
+driver.on('error', error => { logs += error.message; });
+let browser;
+async function connect() {
+  const session = await remote({
+    hostname: '127.0.0.1', port, logLevel: 'error',
+    connectionRetryCount: 0, connectionRetryTimeout: 30000,
+    capabilities: {
+      'tauri:options': { application: resolve('target/debug/wattdrive-desktop' + (process.platform === 'win32' ? '.exe' : '')) },
+      'wdio:enforceWebDriverClassic': true,
+    },
+  });
+  await session.$('#view-signin').waitForDisplayed({ timeout: 30000 });
+  return session;
+}
+try {
+  let ready = false;
+  for (let i = 0; i < 100; i++) {
+    if (driver.exitCode !== null) throw new Error(logs);
+    try { ready = (await fetch(`http://127.0.0.1:${port}/status`)).ok; } catch { /* startup */ }
+    if (ready) break;
+    await delay(100);
+  }
+  assert.ok(ready, 'tauri-driver starts');
+  browser = await connect();
+  await browser.$('#btn-signin').click();
+  await browser.waitUntil(async () => (await browser.$('#signin-error').getText()).length > 0);
+  await browser.$('#btn-settings').click();
+  await browser.$('#set-folder').waitForDisplayed();
+  await browser.$('#set-folder').setValue('relative-path');
+  await browser.$('#btn-settings-save').click();
+  await browser.waitUntil(async () => (await browser.$('#settings-error').getText()).includes('absolute'));
+  const folder = join(root, 'Mirror');
+  await browser.$('#set-folder').setValue(folder);
+  await browser.$('#set-interval').selectByAttribute('value', '300');
+  await browser.$('#set-tray').click();
+  await browser.$('#btn-settings-save').click();
+  await browser.$('#view-signin').waitForDisplayed();
+  let saved = JSON.parse(await readFile(join(root, 'settings.json'), 'utf8'));
+  assert.equal(saved.syncFolder, folder);
+  assert.equal(saved.pollIntervalSecs, 300);
+  assert.equal(saved.closeToTray, false);
+  await browser.deleteSession();
+  browser = undefined;
+  browser = await connect();
+  await browser.$('#btn-settings').click();
+  await browser.$('#set-folder').waitForDisplayed();
+  assert.equal(await browser.$('#set-folder').getValue(), folder);
+  assert.equal(await browser.$('#set-interval').getValue(), '300');
+  // A second write exercises replace-existing semantics on Windows.
+  await browser.$('#set-interval').selectByAttribute('value', '60');
+  await browser.$('#btn-settings-save').click();
+  await browser.$('#view-signin').waitForDisplayed();
+  saved = JSON.parse(await readFile(join(root, 'settings.json'), 'utf8'));
+  assert.equal(saved.pollIntervalSecs, 60);
+  await browser.execute(() => { setTimeout(() => window.__TAURI_INTERNALS__.invoke('quit_app'), 100); });
+  await browser.waitUntil(async () => {
+    try { await browser.getTitle(); return false; } catch { return true; }
+  }, { timeout: 10000, timeoutMsg: 'Quit must close the native app' });
+  console.log('WebDriver passed: boot, sign-in validation, settings validation/save/restart/replace, clean quit.');
+} catch (error) {
+  if (browser) {
+    try { console.error({ url: await browser.getUrl(), sourceLength: (await browser.getPageSource()).length, windows: await browser.getWindowHandles() }); } catch { /* app exited */ }
+  }
+  console.error(logs);
+  throw error;
+} finally {
+  if (browser) await browser.deleteSession().catch(error => console.error('Session cleanup:', error.message));
+  driver.kill();
+  await delay(500);
+  await rm(root, { recursive: true, force: true, maxRetries: 5 });
+}

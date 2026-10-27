@@ -3,16 +3,35 @@
 > Progress log, decisions, open questions. Update at the end of any session
 > with meaningful changes; newest entries first.
 >
-> **Last updated:** 2026-09-25 (README install guide)
+> **Last updated:** 2026-10-27 (Windows support)
 
 ## Overview
 
 Personal tool: two-way iCloud Drive sync for Swatto's Omarchy box. Mirrors
 WattMail's stack and standards (Rust workspace, Tauri v2, Vite/TS/DaisyUI,
-keyring, SQLite, AppImage + updater, verify/fastcheck gates). Linux only by
-decision — no Windows/macOS builds.
+keyring, SQLite, AppImage + updater, verify/fastcheck gates). Windows x64 is
+also supported; macOS remains outside the current scope.
 
 ## Decisions
+
+- **2026-10-27 Windows support requested.** Keep the sync engine and iCloud
+  authentication shared. Use Tauri's Windows tray and Windows Credential Manager
+  for the existing encrypted vault. State lives in `%LOCALAPPDATA%\WattDrive`.
+  Refuse incompatible names, case aliases and reparse points before sync actions
+  rather than silently dropping items or overwriting an alias. Windows packaging
+  is a per-user NSIS installer plus portable EXE using Evergreen WebView2.
+  Apple Passwords integration is explicitly out of scope. WebDriver covers the
+  desktop shell and settings; synthetic provider passes cover sync in Rust.
+
+- **2026-10-27 Dependency audit.** TLS/certificate advisories addressed by
+  rustls 0.23.46, rustls-webpki 0.103.16 and webpki roots 1.0.11. Cargo-deny
+  license review passes with permissive licences plus MPL-2.0 and LLVM exception.
+  Advisory check remains red for upstream unmaintained GTK/Unicode/D-Bus crates,
+  Tokio's Unix AsyncFd safety advisory, and zip 4.6.1 from tauri-plugin-updater
+  (fix requires zip 9). Keep signed updater verification; do not suppress the
+  advisories or claim a clean audit. Recheck upstream fixes before publication
+  and by 2026-11-10. Production npm audit is clean; development tooling has
+  outstanding npm advisories.
 
 - **2026-09-05 Secrets in an encrypted file, one key in the keyring.**
   gnome-keyring-daemon 50.0 on Omarchy aborts (`gkd_secret_service_get_pkcs11_session:

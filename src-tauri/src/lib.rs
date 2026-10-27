@@ -7,6 +7,7 @@ mod autostart;
 pub mod commands;
 #[cfg(target_os = "linux")]
 pub mod linux_webkit;
+#[cfg(target_os = "linux")]
 mod migrate_keyring;
 mod notify;
 mod paths;
@@ -16,6 +17,8 @@ mod status;
 mod sync_runner;
 #[cfg(target_os = "linux")]
 mod tray_linux;
+#[cfg(windows)]
+mod tray_windows;
 mod window_ops;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -77,12 +80,20 @@ pub fn run() {
 
     // One keyring read (the vault key), before the runtime; everything else
     // is the encrypted secrets file.
-    let store = match SessionStore::open(paths::secrets_path()) {
+    let store_result = if paths::test_data_dir().is_some() {
+        Ok(SessionStore::with_key(paths::secrets_path(), [0; 32]))
+    } else {
+        SessionStore::open(paths::secrets_path())
+    };
+    let store = match store_result {
         Ok(s) => Arc::new(s),
         Err(e) => fail(&format!("cannot open the secrets store: {e}")),
     };
     session_saver::init(store.clone());
-    migrate_keyring::run(&store, &paths::secrets_path());
+    #[cfg(target_os = "linux")]
+    if paths::test_data_dir().is_none() {
+        migrate_keyring::run(&store, &paths::secrets_path());
+    }
     let saved = store.load_session().unwrap_or_else(|e| {
         tracing::warn!("could not read saved session: {e}");
         None
@@ -117,10 +128,22 @@ pub fn run() {
         Err(e) => fail(&format!("cannot open sync database: {e}")),
     };
 
-    let result = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+    let mut builder = tauri::Builder::default();
+    if paths::test_data_dir().is_none() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             show_main(app);
-        }))
+        }));
+    }
+    let mut context = tauri::generate_context!();
+    if let Some(dir) = paths::test_data_dir() {
+        for window in &mut context.config_mut().app.windows {
+            window.data_directory = Some(dir.join("webview"));
+        }
+        if let Some(updater) = context.config_mut().plugins.0.get_mut("updater") {
+            updater["endpoints"] = serde_json::json!([]);
+        }
+    }
+    let result = builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -151,6 +174,8 @@ pub fn run() {
             autostart::repair_login_entry(&handle);
             #[cfg(target_os = "linux")]
             tray_linux::spawn(handle.clone());
+            #[cfg(windows)]
+            tray_windows::spawn(&handle)?;
             // Safety net: if the frontend never reveals the window, show it —
             // unless this instance was autostarted into the tray.
             if !start_hidden {
@@ -201,7 +226,7 @@ pub fn run() {
             commands::set_autostart,
             commands::quit_app,
         ])
-        .run(tauri::generate_context!());
+        .run(context);
     if let Err(e) = result {
         fail(&format!("error while running WattDrive: {e}"));
     }

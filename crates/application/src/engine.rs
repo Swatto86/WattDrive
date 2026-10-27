@@ -89,6 +89,9 @@ impl SyncEngine {
             .await
             .map_err(|e| DriveError::Other(e.to_string()))?;
 
+        #[cfg(windows)]
+        crate::windows_paths::validate(local.keys().chain(tree.nodes.keys()).chain(state.keys()))?;
+
         let actions = plan(PlanInput {
             remote: &tree.nodes,
             local: &local,

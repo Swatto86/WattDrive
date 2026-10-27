@@ -122,6 +122,8 @@ impl Loop {
             let _ = self.app.emit(STATUS_EVENT, &snapshot);
             #[cfg(target_os = "linux")]
             crate::tray_linux::update(snapshot.state, snapshot.detail.clone());
+            #[cfg(windows)]
+            crate::tray_windows::update(&self.app, snapshot.state, &snapshot.detail);
         }
     }
 
@@ -322,6 +324,8 @@ impl Loop {
                 let _ = app.emit(STATUS_EVENT, &snapshot);
                 #[cfg(target_os = "linux")]
                 crate::tray_linux::update(snapshot.state, snapshot.detail.clone());
+                #[cfg(windows)]
+                crate::tray_windows::update(&app, snapshot.state, &snapshot.detail);
             }
         };
 

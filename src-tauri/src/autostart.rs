@@ -88,12 +88,18 @@ fn is_cargo_build(path: &Path) -> bool {
 
 /// Whether the login entry currently exists.
 pub fn is_enabled<R: Runtime>(app: &AppHandle<R>) -> Result<bool, String> {
+    if crate::paths::test_data_dir().is_some() {
+        return Ok(false);
+    }
     app.autolaunch().is_enabled().map_err(|e| e.to_string())
 }
 
 /// Write or remove the login entry. Writing is refused unless this process is
 /// the installed app, so a throwaway binary can never become the login target.
 pub fn set_enabled<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<(), String> {
+    if crate::paths::test_data_dir().is_some() {
+        return Err("Start at login is unavailable in isolated tests.".into());
+    }
     let launcher = app.autolaunch();
     if enabled {
         launch_target()?;
@@ -107,6 +113,9 @@ pub fn set_enabled<R: Runtime>(app: &AppHandle<R>, enabled: bool) -> Result<(), 
 /// than this installed AppImage, rewrite it. Running from a non-installed
 /// location never rewrites — that is exactly how the entry went wrong.
 pub fn repair_login_entry<R: Runtime>(app: &AppHandle<R>) {
+    if crate::paths::test_data_dir().is_some() {
+        return;
+    }
     let Some(entry) = login_entry_path() else {
         return;
     };

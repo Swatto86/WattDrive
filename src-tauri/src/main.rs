@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 fn main() {
     // NVIDIA + Hyprland WebKit DMA-BUF protocol error 71 — apply before
     // anything that can load GTK/WebKit (including lib::run → Builder).
