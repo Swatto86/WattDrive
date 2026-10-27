@@ -99,6 +99,13 @@ try {
   } catch (logError) {
     console.error('Isolated app startup log unavailable:', logError.message);
   }
+  if (process.env.EDGEDRIVER_LOG) {
+    try {
+      console.error('Edge driver log:', await readFile(process.env.EDGEDRIVER_LOG, 'utf8'));
+    } catch (logError) {
+      console.error('Edge driver log unavailable:', logError.message);
+    }
+  }
   throw error;
 } finally {
   if (browser) await browser.deleteSession().catch(error => console.error('Session cleanup:', error.message));

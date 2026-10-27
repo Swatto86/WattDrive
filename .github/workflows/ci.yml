@@ -91,7 +91,14 @@ jobs:
           if (-not $runtime) { throw 'WebView2 runtime not found' }
           Invoke-WebRequest "https://msedgedriver.microsoft.com/$($runtime.Name)/edgedriver_win64.zip" -OutFile "$env:RUNNER_TEMP/driver.zip"
           Expand-Archive "$env:RUNNER_TEMP/driver.zip" "$env:RUNNER_TEMP/edge-driver"
-          "EDGEDRIVER=$env:RUNNER_TEMP/edge-driver/msedgedriver.exe" >> $env:GITHUB_ENV
+          $driver = "$env:RUNNER_TEMP/edge-driver/msedgedriver.exe"
+          $log = "$env:RUNNER_TEMP/edge-driver.log"
+          $wrapper = "$env:RUNNER_TEMP/edge-driver.cmd"
+          "@echo off`r`n`"$driver`" --verbose --log-path=`"$log`" %*" | Set-Content $wrapper
+          "EDGEDRIVER=$wrapper" >> $env:GITHUB_ENV
+          "EDGEDRIVER_LOG=$log" >> $env:GITHUB_ENV
+          Write-Host "WebView2 runtime directory: $($runtime.FullName)"
+          & $driver --version
 
       - name: Install frontend dependencies
         run: npm ci
