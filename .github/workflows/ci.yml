@@ -80,7 +80,9 @@ jobs:
         with:
           tool: cargo-binstall
       - name: Install prebuilt test driver
-        run: cargo binstall --no-confirm --disable-strategies compile tauri-driver@2.0.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cargo binstall --no-confirm --strategies quick-install tauri-driver@2.1.0
       - name: Install matching Edge driver
         if: runner.os == 'Windows'
         shell: pwsh
