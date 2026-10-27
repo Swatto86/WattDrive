@@ -94,6 +94,11 @@ try {
     try { console.error({ url: await browser.getUrl(), sourceLength: (await browser.getPageSource()).length, windows: await browser.getWindowHandles() }); } catch { /* app exited */ }
   }
   console.error(logs);
+  try {
+    console.error('Isolated app startup log:', await readFile(join(root, 'wattdrive.log'), 'utf8'));
+  } catch (logError) {
+    console.error('Isolated app startup log unavailable:', logError.message);
+  }
   throw error;
 } finally {
   if (browser) await browser.deleteSession().catch(error => console.error('Session cleanup:', error.message));
