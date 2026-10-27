@@ -23,15 +23,18 @@ also supported; macOS remains outside the current scope.
   Apple Passwords integration is explicitly out of scope. WebDriver covers the
   desktop shell and settings; synthetic provider passes cover sync in Rust.
 
-- **2026-10-27 Dependency audit.** TLS/certificate advisories addressed by
-  rustls 0.23.46, rustls-webpki 0.103.16 and webpki roots 1.0.11. Cargo-deny
-  license review passes with permissive licences plus MPL-2.0 and LLVM exception.
-  Advisory check remains red for upstream unmaintained GTK/Unicode/D-Bus crates,
-  Tokio's Unix AsyncFd safety advisory, and zip 4.6.1 from tauri-plugin-updater
-  (fix requires zip 9). Keep signed updater verification; do not suppress the
-  advisories or claim a clean audit. Recheck upstream fixes before publication
-  and by 2026-11-10. Production npm audit is clean; development tooling has
-  outstanding npm advisories.
+- **2026-10-27 Dependency audit and release approval.** Updated compatible Rust
+  dependencies and WebdriverIO 10 clear security/unsoundness findings and npm
+  advisories (including dev tools). Disable the updater's optional `zip` feature:
+  published updates are raw AppImage/NSIS files, never legacy ZIP/tar archives.
+  Signed verification and system-proxy support remain enabled. Cargo-deny checks
+  licences and advisories in CI. Swatto explicitly approved publication with four
+  Linux maintenance notices documented and visible as warnings: proc-macro-error
+  (RUSTSEC-2024-0370), zvariant (2026-0370), zbus_names (2026-0371), and
+  zvariant_derive (2026-0372). Upstream GTK/D-Bus dependents have no compatible
+  published replacements. No advisory is ignored; vulnerabilities remain errors.
+  Recheck by 2026-11-10. GitHub Actions is enabled for exact-commit CI and releases;
+  releases stay draft until both platforms and checksums are uploaded.
 
 - **2026-09-05 Secrets in an encrypted file, one key in the keyring.**
   gnome-keyring-daemon 50.0 on Omarchy aborts (`gkd_secret_service_get_pkcs11_session:

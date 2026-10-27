@@ -16,6 +16,23 @@ env:
   CARGO_INCREMENTAL: "0"
 
 jobs:
+  dependencies:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@1.96.0
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny@0.20.2
+      - name: Rust advisories and licences
+        run: cargo deny --locked check --warn unmaintained advisories licenses
+      - run: npm ci
+      - name: npm advisories including development tooling
+        run: npm audit
   verify:
     strategy:
       fail-fast: false

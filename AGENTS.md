@@ -19,6 +19,10 @@ repository `Swatto86/WattDrive`, single branch `main`.
   `EDGEDRIVER` can name the Windows driver. Debug-only `WATTDRIVE_TEST_DATA_DIR`
   isolates state/webview, bypasses the OS keyring and single-instance guard, and
   disables autostart and updater endpoints. Release builds ignore it.
+  `node scripts/e2e.mjs --live-updater` opts into a real manifest probe while
+  retaining isolation and refusing installation. Release dependency checks:
+  `npm audit` and `cargo deny --locked check --warn unmaintained advisories licenses`.
+  The four accepted maintenance warnings are documented in `CONTEXT.md`.
 - Windows uses Tauri's native tray, Windows Credential Manager for the vault key,
   and `%LOCALAPPDATA%\WattDrive` for state. Pre-plan validation rejects unsafe
   Windows filenames and case collisions; scanning refuses reparse points.

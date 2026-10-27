@@ -135,17 +135,22 @@ pub fn run() {
         }));
     }
     let mut context = tauri::generate_context!();
+    let mut updater_plugin = tauri_plugin_updater::Builder::new();
     if let Some(dir) = paths::test_data_dir() {
         for window in &mut context.config_mut().app.windows {
             window.data_directory = Some(dir.join("webview"));
         }
-        if let Some(updater) = context.config_mut().plugins.0.get_mut("updater") {
-            updater["endpoints"] = serde_json::json!([]);
+        // Even the opt-in live manifest probe must never install an update.
+        updater_plugin = updater_plugin.default_version_comparator(|_, _| false);
+        if std::env::var_os("WATTDRIVE_TEST_LIVE_UPDATER").is_none() {
+            if let Some(updater) = context.config_mut().plugins.0.get_mut("updater") {
+                updater["endpoints"] = serde_json::json!([]);
+            }
         }
     }
     let result = builder
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(updater_plugin.build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,

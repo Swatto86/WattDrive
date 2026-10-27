@@ -66,8 +66,16 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: WattDrive ${{ github.ref_name }}
-          releaseBody: Automated build of WattDrive ${{ github.ref_name }}.
-          releaseDraft: false
+          releaseBody: |
+            Two-way iCloud Drive sync for Windows and Linux.
+
+            - Windows: native tray, Credential Manager vault key, per-user installer and portable EXE.
+            - Reject unsafe Windows filenames, case collisions and reparse points before sync changes.
+            - Updated dependencies fix known security advisories. Legacy ZIP/tar updater support is removed; signed raw AppImage and NSIS updates remain supported.
+            - npm audit reports zero vulnerabilities, including development tools. Four Linux maintenance notices remain visible: RUSTSEC-2024-0370 and RUSTSEC-2026-0370/0371/0372. They are not security vulnerabilities and have no compatible published fix; recheck by 2026-11-10.
+
+            Windows 10/11 x64 requires the [Evergreen WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). Linux x86_64 requires FUSE 2 (or --appimage-extract-and-run), a desktop session and an unlocked Secret Service keyring. See the README for installation and sign-in. Apple Passwords is not included.
+          releaseDraft: true
           prerelease: false
           args: --bundles ${{ matrix.bundles }}
 
@@ -100,3 +108,7 @@ jobs:
           rm -f release-assets/SHA256SUMS.txt
           ( cd release-assets && sha256sum $(ls -1 | sort) > ../SHA256SUMS.txt )
           gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false --latest --repo "$GITHUB_REPOSITORY"

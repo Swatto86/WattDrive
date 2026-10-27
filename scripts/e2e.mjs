@@ -7,11 +7,15 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { remote } from 'webdriverio';
 
 const root = await mkdtemp(join(tmpdir(), 'wattdrive-e2e-'));
+const liveUpdater = process.argv.includes('--live-updater');
 const port = 4461;
 const args = ['--port', String(port), '--native-port', '4462'];
 if (process.env.EDGEDRIVER) args.push('--native-driver', process.env.EDGEDRIVER);
 const driver = spawn('tauri-driver', args, {
-  env: { ...process.env, WATTDRIVE_TEST_DATA_DIR: root },
+  env: {
+    ...process.env, WATTDRIVE_TEST_DATA_DIR: root,
+    ...(liveUpdater ? { WATTDRIVE_TEST_LIVE_UPDATER: '1' } : {}),
+  },
   stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
 });
 let logs = '';
@@ -71,6 +75,15 @@ try {
   await browser.$('#view-signin').waitForDisplayed();
   saved = JSON.parse(await readFile(join(root, 'settings.json'), 'utf8'));
   assert.equal(saved.pollIntervalSecs, 60);
+  if (liveUpdater) {
+    await browser.$('#btn-about').click();
+    await browser.$('#btn-check-update').waitForDisplayed();
+    await browser.$('#btn-check-update').click();
+    await browser.waitUntil(async () => (await browser.$('#about-update').getText()).length > 0,
+      { timeout: 60000, timeoutMsg: 'Live GitHub updater check must finish' });
+    assert.equal(await browser.$('#about-update').getText(), 'You are on the latest version.');
+    console.log('Live updater manifest fetched and decoded through the real webview/native boundary; installation disabled in isolated tests.');
+  }
   await browser.execute(() => { setTimeout(() => window.__TAURI_INTERNALS__.invoke('quit_app'), 100); });
   await browser.waitUntil(async () => {
     try { await browser.getTitle(); return false; } catch { return true; }

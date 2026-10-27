@@ -17,7 +17,8 @@ Windows 10/11 x64 requires the [Microsoft Evergreen WebView2 Runtime](https://de
 Build with the MSVC Rust toolchain, Node.js and `npm ci`, then `npx tauri dev`.
 `npx tauri build --bundles nsis` produces a per-user installer; the standalone
 `target/release/wattdrive-desktop.exe` is also portable with WebView2 installed.
-Windows artifacts will appear on the release page after the first Windows release.
+Download the Windows installer or portable EXE from the
+[release page](https://github.com/Swatto86/WattDrive/releases/latest).
 
 Settings, logs, the sync database and encrypted secrets are in
 `%LOCALAPPDATA%\WattDrive`. The vault key is in Windows Credential Manager.
@@ -37,6 +38,13 @@ an Edge WebDriver matching the installed WebView2 runtime, on PATH or supplied
 through `EDGEDRIVER`. The WebDriver suite isolates its data and exercises boot,
 validation, settings persistence and quit. Synthetic sync passes run in Rust tests;
 real Apple sign-in and live sync still require a manual account check.
+
+Release checks include `npm audit` and
+`cargo deny --locked check --warn unmaintained advisories licenses`.
+The four documented Linux maintenance notices remain visible; security and
+unsoundness findings fail the audit. `node scripts/e2e.mjs --live-updater` probes
+the real GitHub updater manifest through the webview, with installation disabled
+and state isolated. Run it on Linux under Xvfb when no desktop is available.
 
 ## Linux requirements
 
