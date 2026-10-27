@@ -115,4 +115,4 @@ jobs:
         run: node scripts/e2e.mjs
       - name: WebDriver Linux
         if: runner.os == 'Linux'
-        run: xvfb-run -a node scripts/e2e.mjs
+        run: dbus-run-session -- xvfb-run -a node scripts/e2e.mjs
