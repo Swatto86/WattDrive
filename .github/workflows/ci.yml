@@ -57,6 +57,8 @@ jobs:
       - uses: mozilla-actions/sccache-action@v0.0.10
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
 
       # Tauri's Linux build needs the system webkit/gtk/appindicator libraries;
       # the keyring backend needs libdbus.

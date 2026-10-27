@@ -127,6 +127,7 @@ pub fn run() {
         Ok(db) => Arc::new(db),
         Err(e) => fail(&format!("cannot open sync database: {e}")),
     };
+    tracing::debug!("session store, HTTP client and sync database ready");
 
     let mut builder = tauri::Builder::default();
     if paths::test_data_dir().is_none() {
@@ -135,6 +136,7 @@ pub fn run() {
         }));
     }
     let mut context = tauri::generate_context!();
+    tracing::debug!("native app context ready");
     let mut updater_plugin = tauri_plugin_updater::Builder::new();
     if let Some(dir) = paths::test_data_dir() {
         for window in &mut context.config_mut().app.windows {
@@ -157,6 +159,7 @@ pub fn run() {
             Some(vec![HIDDEN_FLAG]),
         ))
         .setup(move |app| {
+            tracing::debug!("native webview created; setting up app services");
             let handle = app.handle().clone();
             let progress_handle = handle.clone();
             client.set_progress_hook(Arc::new(move |msg| {
@@ -181,6 +184,7 @@ pub fn run() {
             tray_linux::spawn(handle.clone());
             #[cfg(windows)]
             tray_windows::spawn(&handle)?;
+            tracing::debug!("app services and tray ready");
             // Safety net: if the frontend never reveals the window, show it —
             // unless this instance was autostarted into the tray.
             if !start_hidden {
