@@ -9,6 +9,7 @@
 pub mod adapter;
 pub mod auth;
 pub mod drive;
+mod package;
 pub mod session;
 pub mod srp;
 mod wire;

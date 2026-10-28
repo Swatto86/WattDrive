@@ -14,6 +14,7 @@ fn rid(s: &str) -> RemoteId {
 }
 fn rfile(id: &str, etag: &str, size: u64, mtime: i64) -> RemoteFile {
     RemoteFile {
+        is_package: false,
         id: rid(id),
         etag: etag.into(),
         size,
@@ -37,6 +38,7 @@ fn lf(size: u64, mtime: i64) -> LocalNode {
 }
 fn sfile(id: &str, etag: &str, size: u64, mtime: i64) -> SyncEntry {
     SyncEntry {
+        is_package: false,
         kind: ItemKind::File,
         remote_id: rid(id),
         remote_etag: etag.into(),

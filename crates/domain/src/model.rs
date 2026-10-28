@@ -22,6 +22,8 @@ pub enum ItemKind {
 /// A file as iCloud reports it in a folder listing.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RemoteFile {
+    /// Apple package content is downloaded as a ZIP, not a regular file.
+    pub is_package: bool,
     pub id: RemoteId,
     /// Version stamp; changes whenever the content or metadata changes.
     pub etag: String,
@@ -85,6 +87,9 @@ impl LocalNode {
 /// side is a comparison against this record.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct SyncEntry {
+    /// Additive metadata; older records describe ordinary files.
+    #[serde(default)]
+    pub is_package: bool,
     pub kind: ItemKind,
     pub remote_id: RemoteId,
     /// Empty for folders (iCloud folder etags churn with their contents).
@@ -96,6 +101,7 @@ pub struct SyncEntry {
 impl SyncEntry {
     pub fn folder(remote_id: RemoteId) -> Self {
         Self {
+            is_package: false,
             kind: ItemKind::Folder,
             remote_id,
             remote_etag: String::new(),
@@ -106,6 +112,7 @@ impl SyncEntry {
 
     pub fn file(remote: &RemoteFile, local_mtime_ms: i64) -> Self {
         Self {
+            is_package: remote.is_package,
             kind: ItemKind::File,
             remote_id: remote.id.clone(),
             remote_etag: remote.etag.clone(),

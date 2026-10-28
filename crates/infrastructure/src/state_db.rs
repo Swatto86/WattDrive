@@ -38,6 +38,7 @@ impl SqliteStateStore {
              CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )
         .map_err(db_err)?;
+        ensure_package_column(&conn).map_err(db_err)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -52,6 +53,7 @@ impl SqliteStateStore {
              CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
         )
         .map_err(db_err)?;
+        ensure_package_column(&conn).map_err(db_err)?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -135,7 +137,7 @@ impl StateStore for SqliteStateStore {
     async fn load_all(&self) -> Result<BTreeMap<RelPath, SyncEntry>, StateError> {
         self.with_conn(|c| {
             let mut stmt = c.prepare(
-                "SELECT path, kind, remote_id, remote_etag, size, local_mtime_ms FROM entries",
+                "SELECT path, kind, remote_id, remote_etag, size, local_mtime_ms, is_package FROM entries",
             )?;
             let rows = stmt.query_map([], |r| {
                 let path: String = r.get(0)?;
@@ -144,6 +146,7 @@ impl StateStore for SqliteStateStore {
                 Ok((
                     path,
                     SyncEntry {
+                        is_package: r.get(6)?,
                         kind: if kind == "folder" {
                             ItemKind::Folder
                         } else {
@@ -176,17 +179,19 @@ impl StateStore for SqliteStateStore {
         let entry = entry.clone();
         self.with_conn(move |c| {
             c.execute(
-                "INSERT INTO entries (path, kind, remote_id, remote_etag, size, local_mtime_ms)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+                "INSERT INTO entries (path, kind, remote_id, remote_etag, size, local_mtime_ms, is_package)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
                  ON CONFLICT(path) DO UPDATE SET kind = excluded.kind, remote_id = excluded.remote_id,
-                   remote_etag = excluded.remote_etag, size = excluded.size, local_mtime_ms = excluded.local_mtime_ms",
+                   remote_etag = excluded.remote_etag, size = excluded.size, local_mtime_ms = excluded.local_mtime_ms,
+                   is_package = excluded.is_package",
                 params![
                     path,
                     kind_str(entry.kind),
                     entry.remote_id.0,
                     entry.remote_etag,
                     i64::try_from(entry.size).unwrap_or(i64::MAX),
-                    entry.local_mtime_ms
+                    entry.local_mtime_ms,
+                    entry.is_package
                 ],
             )
             .map(|_| ())
@@ -224,9 +229,45 @@ impl StateStore for SqliteStateStore {
     }
 }
 
+fn ensure_package_column(conn: &Connection) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare("PRAGMA table_info(entries)")?;
+    let columns = stmt.query_map([], |r| r.get::<_, String>(1))?;
+    for column in columns {
+        if column? == "is_package" {
+            return Ok(());
+        }
+    }
+    conn.execute_batch("ALTER TABLE entries ADD COLUMN is_package INTEGER NOT NULL DEFAULT 0")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn old_databases_migrate_without_losing_records_and_packages_survive_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sync.db");
+        let conn = Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE entries (path TEXT PRIMARY KEY, kind TEXT NOT NULL,
+            remote_id TEXT NOT NULL, remote_etag TEXT NOT NULL, size INTEGER NOT NULL,
+            local_mtime_ms INTEGER NOT NULL);
+            INSERT INTO entries VALUES ('old.txt', 'file', 'old', 'e', 3, 99);",
+        )
+        .unwrap();
+        drop(conn);
+        let db = SqliteStateStore::open(&path).unwrap();
+        assert_eq!(db.load_all().await.unwrap()[&p("old.txt")], entry("old"));
+        let mut package = entry("package");
+        package.is_package = true;
+        db.put(&p("Project.zip"), &package).await.unwrap();
+        drop(db);
+        let db = SqliteStateStore::open(&path).unwrap();
+        let entries = db.load_all().await.unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[&p("Project.zip")], package);
+    }
 
     #[tokio::test]
     async fn changing_scope_discards_old_deletion_baseline() {
@@ -256,6 +297,7 @@ mod tests {
     }
     fn entry(id: &str) -> SyncEntry {
         SyncEntry {
+            is_package: false,
             kind: ItemKind::File,
             remote_id: RemoteId(id.into()),
             remote_etag: "e".into(),

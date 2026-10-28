@@ -85,6 +85,13 @@ pub async fn list_folder(
 }
 
 pub async fn download_url(client: &IcloudClient, drivewsid: &str) -> Result<String, DriveError> {
+    Ok(download_target(client, drivewsid).await?.0)
+}
+
+pub async fn download_target(
+    client: &IcloudClient,
+    drivewsid: &str,
+) -> Result<(String, bool), DriveError> {
     let url = format!(
         "{}/ws/{}/download/by_id",
         endpoint(client, "docws")?,
@@ -98,13 +105,10 @@ pub async fn download_url(client: &IcloudClient, drivewsid: &str) -> Result<Stri
                 .query(&[("document_id", doc_id.as_str())])
         })
         .await?;
-    req.data_token
-        .or(req.package_token)
-        .map(|t| t.url)
-        .ok_or(DriveError::Api {
-            status: 200,
-            message: "download url: no token in response".into(),
-        })
+    req.download().ok_or(DriveError::Api {
+        status: 200,
+        message: "download url: no token in response".into(),
+    })
 }
 
 /// Stream a content URL to `dest`, following iCloud's non-standard 330.

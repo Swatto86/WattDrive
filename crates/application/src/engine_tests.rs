@@ -46,6 +46,112 @@ async fn run(engine: &SyncEngine) -> SyncReport {
     report
 }
 
+#[tokio::test]
+async fn package_downloads_use_zip_names_and_settle_without_uploading() {
+    let r = rig();
+    r.drive.add_package(
+        "Project.xcodeproj",
+        b"validated archive bytes",
+        1_700_000_000_000,
+    );
+    assert_eq!(run(&r.engine).await.downloaded, 1);
+    assert!(r.root.join("Project.xcodeproj.zip").is_file());
+    assert!(!r.root.join("Project.xcodeproj").exists());
+    assert_eq!(run(&r.engine).await.planned, 0);
+    std::fs::remove_file(r.root.join("Project.xcodeproj.zip")).unwrap();
+    assert_eq!(run(&r.engine).await.downloaded, 1);
+    assert_eq!(r.drive.trashed_count(), 0);
+}
+
+#[tokio::test]
+async fn package_edits_and_local_folder_deletion_never_replace_the_bundle() {
+    let r = rig();
+    r.drive
+        .add_package("Docs/Project.xcodeproj", b"archive", 1_700_000_000_000);
+    run(&r.engine).await;
+    write_local(
+        &r.root,
+        "Docs/Project.xcodeproj.zip",
+        b"edited zip",
+        1_700_000_010_000,
+    );
+    let report = run(&r.engine).await;
+    assert_eq!(report.conflicts, 1);
+    assert_eq!(report.uploaded, 0);
+    assert_eq!(r.drive.trashed_count(), 0);
+    assert_eq!(
+        std::fs::read(r.root.join("Docs/Project.xcodeproj.zip")).unwrap(),
+        b"archive"
+    );
+    assert_eq!(
+        run(&r.engine).await.uploaded,
+        1,
+        "preserved copy is a separate ordinary ZIP"
+    );
+    assert!(r.drive.exists("Docs/Project.xcodeproj"));
+    std::fs::remove_dir_all(r.root.join("Docs")).unwrap();
+    assert_eq!(run(&r.engine).await.downloaded, 1);
+    assert!(r.drive.exists("Docs/Project.xcodeproj"));
+    assert!(r.root.join("Docs/Project.xcodeproj.zip").is_file());
+}
+
+#[tokio::test]
+async fn package_archive_name_collision_stops_before_changes() {
+    let r = rig();
+    r.drive.add_package("Project.xcodeproj", b"archive", 10);
+    r.drive
+        .add_file("Project.xcodeproj.zip", b"existing zip", 10);
+    write_local(&r.root, "keep.txt", b"keep", 10);
+    assert!(r
+        .engine
+        .run_once(&|_| {})
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("collides"));
+    assert!(!r.drive.exists("keep.txt"));
+    assert_eq!(r.drive.trashed_count(), 0);
+    assert!(!r.root.join("Project.xcodeproj.zip").exists());
+}
+
+#[tokio::test]
+async fn extracted_package_cannot_upload_over_the_original_bundle() {
+    let r = rig();
+    r.drive.add_package("Project.xcodeproj", b"archive", 10);
+    write_local(&r.root, "Project.xcodeproj/project.txt", b"local", 10);
+    assert!(r
+        .engine
+        .run_once(&|_| {})
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("conflicts with an Apple bundle"));
+    assert_eq!(r.drive.trashed_count(), 0);
+    assert!(r.root.join("Project.xcodeproj/project.txt").is_file());
+}
+
+#[tokio::test]
+async fn replacement_rechecks_an_adopted_files_representation_before_trashing() {
+    let r = rig();
+    r.drive
+        .add_package("Project.xcodeproj", b"archive", 1_700_000_000_000);
+    // A matching local stamp can be adopted without fetching content metadata.
+    write_local(
+        &r.root,
+        "Project.xcodeproj",
+        &vec![0; 7 + 1024],
+        1_700_000_000_000,
+    );
+    run(&r.engine).await;
+    write_local(&r.root, "Project.xcodeproj", b"edit", 1_700_000_010_000);
+    assert!(r.engine.run_once(&|_| {}).await.is_err());
+    assert_eq!(r.drive.trashed_count(), 0);
+    assert_eq!(
+        std::fs::read(r.root.join("Project.xcodeproj")).unwrap(),
+        b"edit"
+    );
+}
+
 #[cfg(windows)]
 #[tokio::test]
 async fn unsafe_windows_names_abort_before_any_changes() {

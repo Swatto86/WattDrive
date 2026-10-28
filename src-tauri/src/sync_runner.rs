@@ -302,6 +302,9 @@ impl Loop {
                 match p {
                     Progress::ScanningLocal => s.detail = "Scanning local folder…".into(),
                     Progress::ListingRemote => s.detail = "Listing iCloud Drive…".into(),
+                    Progress::PreparingRemote { done, total } => {
+                        s.detail = format!("Checking file formats: {done} of {total}…");
+                    }
                     Progress::Executing {
                         done,
                         total,

@@ -132,6 +132,23 @@ WattDrive when the device asks. The window says so while it waits.
 The first pass creates the sync folder if needed and mirrors iCloud Drive into
 it.
 
+### Apple bundles
+
+iCloud delivers Apple bundles (such as Xcode projects, apps and frameworks) as
+ZIP archives. WattDrive saves these as `name.extension.zip`, validates their
+contents and preserves Apple's metadata inside the archive. Ordinary files
+continue to sync in both directions.
+
+Bundle archives are download mirrors: deleting a local ZIP restores it at the
+next sync. Editing it keeps a conflict copy, which can upload as a separate ZIP;
+it never replaces the original Apple bundle. Changes made to the bundle on
+iCloud download a fresh archive. To delete a bundle, remove it on iCloud; its
+unchanged local archive then goes to WattDrive's local trash.
+
+Extract bundles outside the sync folder. An extracted folder at the original
+bundle path, or an iCloud file already using the archive's `.zip` name, stops
+sync with an explanation instead of risking an overwrite.
+
 ## Configuration
 
 Open **Settings**.

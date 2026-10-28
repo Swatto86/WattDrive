@@ -2,7 +2,8 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use wattdrive_domain::{DriveError, RelPath, RemoteDrive, RemoteId, RemoteNode};
+use futures_util::stream::{self, StreamExt};
+use wattdrive_domain::{DriveError, RelPath, RemoteDrive, RemoteId, RemoteNode, SyncEntry};
 
 pub struct RemoteTree {
     pub nodes: BTreeMap<RelPath, RemoteNode>,
@@ -10,6 +11,72 @@ pub struct RemoteTree {
     /// folders. The root is `None` in path terms and lives in `root_id`.
     pub folder_ids: HashMap<RelPath, RemoteId>,
     pub root_id: RemoteId,
+}
+
+/// Apple omits package information from listings. Resolve new versions before
+/// planning, retaining the representation of already-synced versions.
+pub async fn prepare_files(
+    drive: &dyn RemoteDrive,
+    tree: &mut RemoteTree,
+    state: &BTreeMap<RelPath, SyncEntry>,
+    // true means replacing remote content: recheck even an adopted baseline.
+    transfers: &BTreeMap<RelPath, bool>,
+    progress: &(dyn Fn(usize, usize) + Sync),
+) -> Result<(), DriveError> {
+    let known: HashMap<_, _> = state.values().map(|s| (&s.remote_id, s)).collect();
+    for node in tree.nodes.values_mut() {
+        if let RemoteNode::File(file) = node {
+            if let Some(saved) = known.get(&file.id).filter(|s| s.remote_etag == file.etag) {
+                file.is_package = saved.is_package;
+            }
+        }
+    }
+    let pending: Vec<_> = tree
+        .nodes
+        .iter()
+        .filter_map(|(path, node)| {
+            let RemoteNode::File(file) = node else {
+                return None;
+            };
+            (transfers.get(path).is_some_and(|replacing| {
+                *replacing
+                    || known
+                        .get(&file.id)
+                        .is_none_or(|s| s.remote_etag != file.etag)
+            }))
+            .then(|| (path.clone(), file.clone()))
+        })
+        .collect();
+    let total = pending.len();
+    let mut requests = stream::iter(pending.into_iter().map(|(path, file)| async move {
+        drive.prepare_file(&file).await.map(|file| (path, file))
+    }))
+    .buffer_unordered(4);
+    let mut done = 0;
+    progress(done, total);
+    while let Some(result) = requests.next().await {
+        let (path, file) = result?;
+        tree.nodes.insert(path, RemoteNode::File(file));
+        done += 1;
+        progress(done, total);
+    }
+    let mut nodes = BTreeMap::new();
+    for (path, node) in std::mem::take(&mut tree.nodes) {
+        let mut mapped = path;
+        if let RemoteNode::File(file) = &node {
+            if file.is_package {
+                mapped = RelPath::new(&format!("{mapped}.zip"))
+                    .map_err(|e| DriveError::Other(e.to_string()))?;
+            }
+        }
+        if nodes.insert(mapped.clone(), node).is_some() {
+            return Err(DriveError::Other(format!(
+                "Package archive name collides with another iCloud item: {mapped}"
+            )));
+        }
+    }
+    tree.nodes = nodes;
+    Ok(())
 }
 
 pub async fn walk(drive: &dyn RemoteDrive) -> Result<RemoteTree, DriveError> {

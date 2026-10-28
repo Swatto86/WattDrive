@@ -11,6 +11,7 @@ use wattdrive_domain::{DriveError, RemoteChild, RemoteDrive, RemoteFile, RemoteI
 
 #[derive(Clone, Debug)]
 struct Node {
+    package: bool,
     parent: String,
     name: String,
     folder: bool,
@@ -75,6 +76,7 @@ impl FakeDrive {
         inner.nodes.insert(
             id.clone(),
             Node {
+                package: false,
                 parent: parent.to_string(),
                 name: name.to_string(),
                 folder,
@@ -121,6 +123,13 @@ impl FakeDrive {
         node.content = content.to_vec();
         node.mtime_ms = mtime_ms;
         node.etag = etag;
+    }
+
+    pub fn add_package(&self, path: &str, content: &[u8], mtime_ms: i64) {
+        self.add_file(path, content, mtime_ms);
+        let mut inner = self.lock();
+        let id = Self::find(&inner, path).unwrap();
+        inner.nodes.get_mut(&id).unwrap().package = true;
     }
 
     pub fn remove(&self, path: &str) {
@@ -209,14 +218,23 @@ impl RemoteDrive for FakeDrive {
                     }
                 } else {
                     RemoteNode::File(RemoteFile {
+                        is_package: false, // Apple's listing hides this too.
                         id: RemoteId(id.clone()),
                         etag: n.etag.to_string(),
-                        size: n.content.len() as u64,
+                        size: n.content.len() as u64 + if n.package { 1024 } else { 0 },
                         modified_ms: n.mtime_ms,
                     })
                 },
             })
             .collect())
+    }
+
+    async fn prepare_file(&self, file: &RemoteFile) -> Result<RemoteFile, DriveError> {
+        let inner = self.lock();
+        let node = inner.nodes.get(file.id.as_str()).unwrap();
+        let mut prepared = file.clone();
+        prepared.is_package = node.package;
+        Ok(prepared)
     }
 
     async fn download(&self, file: &RemoteFile, dest: &Path) -> Result<(), DriveError> {
@@ -256,6 +274,7 @@ impl RemoteDrive for FakeDrive {
         let size = content.len() as u64;
         let (id, etag) = Self::insert(&mut inner, parent.as_str(), name, false, content, mtime_ms);
         Ok(RemoteFile {
+            is_package: false,
             id: RemoteId(id),
             etag: etag.to_string(),
             size,

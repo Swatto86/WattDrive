@@ -1,4 +1,5 @@
 //! JSON shapes of the iCloud endpoints we call. Only the fields we read are
+// size-exception: protocol shapes stay together with their synthetic decode/encode tests.
 //! declared; serde ignores the rest. Kept together so a change in Apple's
 //! payloads is a one-file fix, and each shape has a decode test against a
 //! captured-style payload.
@@ -163,6 +164,16 @@ pub struct FileRequest {
 #[derive(Debug, Deserialize)]
 pub struct FileToken {
     pub url: String,
+}
+
+impl FileRequest {
+    pub fn download(self) -> Option<(String, bool)> {
+        if let Some(token) = self.data_token {
+            Some((token.url, false))
+        } else {
+            self.package_token.map(|token| (token.url, true))
+        }
+    }
 }
 
 /// `POST /ws/{zone}/upload/web` — one entry per requested file.
@@ -356,6 +367,28 @@ mod tests {
         )
         .unwrap();
         assert_eq!(upd.results[0].document.as_ref().unwrap().etag, "e9");
+    }
+
+    #[test]
+    fn package_token_is_distinct_from_regular_content() {
+        let package: FileRequest =
+            serde_json::from_str(r#"{"package_token":{"url":"https://example.test/package"}}"#)
+                .unwrap();
+        assert_eq!(
+            package.download(),
+            Some(("https://example.test/package".into(), true))
+        );
+        let ordinary: FileRequest = serde_json::from_str(
+            r#"{"data_token":{"url":"https://example.test/file"},"package_token":{"url":"https://example.test/package"}}"#,
+        ).unwrap();
+        assert_eq!(
+            ordinary.download(),
+            Some(("https://example.test/file".into(), false))
+        );
+        assert!(serde_json::from_str::<FileRequest>("{}")
+            .unwrap()
+            .download()
+            .is_none());
     }
 
     #[test]

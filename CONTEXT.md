@@ -14,6 +14,18 @@ also supported; macOS remains outside the current scope.
 
 ## Decisions
 
+- **2026-10-28 Apple package downloads.** Apple's listing labels packages FILE
+  and reports the unpacked size, but docws returns a package_token pointing to a
+  ZIP. Resolve new remote versions before planning and map packages to `.zip`
+  names. Validate archive structure and entry CRCs without extracting: this
+  preserves Mac metadata and symlinks on Windows/Linux. Package ZIPs are download
+  mirrors; local deletion restores the archive and local edits keep a conflict
+  copy, never replace the source bundle. Name collisions and extracted originals
+  stop the pass before mutations. Persist is_package with an additive SQLite
+  column (old rows default false), and record the actual local archive size.
+  Unchanged remote versions reuse persisted classification. No schema removal
+  or version bump is involved; installation rollback retains a pre-change DB copy.
+
 - **2026-10-27 Windows support requested.** Keep the sync engine and iCloud
   authentication shared. Use Tauri's Windows tray and Windows Credential Manager
   for the existing encrypted vault. State lives in `%LOCALAPPDATA%\WattDrive`.

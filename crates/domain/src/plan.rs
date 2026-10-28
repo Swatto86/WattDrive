@@ -1,4 +1,5 @@
 //! The two-way sync planner.
+// size-exception: cohesive three-snapshot rules and ordered folder-deletion resolution.
 //!
 //! Compares three snapshots keyed by [`RelPath`] and emits an ordered action
 //! list. Rules, in plain words:
@@ -237,6 +238,29 @@ fn plan_path(
     deferred: &mut Vec<Deferred>,
 ) {
     let p = || path.clone();
+    // A package's ZIP is a local representation, never a replacement payload
+    // for Apple's bundle. Preserve local edits and restore missing archives.
+    if let Some(RemoteNode::File(rf)) =
+        remote.filter(|n| matches!(n, RemoteNode::File(f) if f.is_package))
+    {
+        let unchanged = match (local, state) {
+            (Some(LocalNode::File { size, mtime_ms }), Some(s)) => {
+                s.is_package && s.remote_id == rf.id && !local_changed(s, *size, *mtime_ms)
+            }
+            _ => false,
+        };
+        if unchanged && state.is_some_and(|s| s.remote_etag == rf.etag) {
+            return;
+        }
+        if local.is_some() && !unchanged {
+            out.push(SyncAction::MoveLocalAside { path: p() });
+        }
+        out.push(SyncAction::Download {
+            path: p(),
+            remote: rf.clone(),
+        });
+        return;
+    }
     match (remote, local) {
         // ---- folders on both sides ----
         (Some(RemoteNode::Folder { id, .. }), Some(LocalNode::Folder)) => {

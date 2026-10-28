@@ -31,6 +31,11 @@ pub trait RemoteDrive: Send + Sync {
     /// Fetch a file's content into `dest` (an already-chosen temp path).
     async fn download(&self, file: &RemoteFile, dest: &Path) -> Result<(), DriveError>;
 
+    /// Resolve download representation before planning a new remote version.
+    async fn prepare_file(&self, file: &RemoteFile) -> Result<RemoteFile, DriveError> {
+        Ok(file.clone())
+    }
+
     /// Upload `src` as `name` inside `parent`, stamping it with `mtime_ms`.
     /// Returns the created file as iCloud now reports it.
     async fn upload(

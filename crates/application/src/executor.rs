@@ -168,13 +168,13 @@ impl Executor<'_> {
         let result = async {
             // iCloud's content service answers 400 for an empty document; an
             // empty file needs no request anyway.
-            if remote.size == 0 {
+            if remote.size == 0 && !remote.is_package {
                 tokio::fs::write(&tmp, b"").await?;
             } else {
                 self.drive.download(remote, &tmp).await?;
             }
             let (size, _) = stamp(tmp.clone()).await?;
-            if size != remote.size {
+            if !remote.is_package && size != remote.size {
                 return Err(ExecError::Other(format!(
                     "{path}: downloaded {size} bytes, expected {}",
                     remote.size
@@ -210,14 +210,18 @@ impl Executor<'_> {
             return Err(e);
         }
 
-        let (_, mtime) = stamp(final_path).await?;
-        Ok(self
-            .state
-            .put(path, &SyncEntry::file(remote, mtime))
-            .await?)
+        let (size, mtime) = stamp(final_path).await?;
+        let mut entry = SyncEntry::file(remote, mtime);
+        entry.size = size;
+        Ok(self.state.put(path, &entry).await?)
     }
 
     async fn upload(&self, path: &RelPath, replaces: Option<&RemoteFile>) -> Result<(), ExecError> {
+        if replaces.is_some_and(|file| file.is_package) {
+            return Err(ExecError::Other(
+                "Cannot replace an Apple bundle with a ZIP upload".into(),
+            ));
+        }
         let src = self.abs(path);
         let (size, mtime) = stamp(src.clone()).await?;
         // iCloud needs the previous version trashed before the new bytes can

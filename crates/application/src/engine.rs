@@ -15,6 +15,10 @@ use crate::{local, remote_tree};
 pub enum Progress {
     ScanningLocal,
     ListingRemote,
+    PreparingRemote {
+        done: usize,
+        total: usize,
+    },
     Executing {
         done: usize,
         total: usize,
@@ -82,12 +86,59 @@ impl SyncEngine {
         progress(Progress::ScanningLocal);
         let local = local::scan(self.root.clone()).await?;
         progress(Progress::ListingRemote);
-        let tree = remote_tree::walk(self.drive.as_ref()).await?;
+        let mut tree = remote_tree::walk(self.drive.as_ref()).await?;
         let state = self
             .state
             .load_all()
             .await
             .map_err(|e| DriveError::Other(e.to_string()))?;
+
+        // Files already eligible for adoption need no content request. Resolve
+        // transfers before the final plan so a ZIP never replaces a bundle.
+        let transfers = plan(PlanInput {
+            remote: &tree.nodes,
+            local: &local,
+            state: &state,
+        })
+        .into_iter()
+        .filter_map(|action| match action {
+            SyncAction::Download { path, .. } => Some((path, false)),
+            SyncAction::Upload {
+                path,
+                replaces: Some(_),
+            } => Some((path, true)),
+            _ => None,
+        })
+        .collect();
+        remote_tree::prepare_files(
+            self.drive.as_ref(),
+            &mut tree,
+            &state,
+            &transfers,
+            &|done, total| {
+                progress(Progress::PreparingRemote { done, total });
+            },
+        )
+        .await?;
+
+        for (path, node) in &tree.nodes {
+            if matches!(node, wattdrive_domain::RemoteNode::File(file) if file.is_package) {
+                if let Some(original) = path.as_str().strip_suffix(".zip") {
+                    let original = wattdrive_domain::RelPath::new(original)
+                        .map_err(|e| DriveError::Other(e.to_string()))?;
+                    if local.contains_key(&original)
+                        || (cfg!(windows)
+                            && local.keys().any(|p| {
+                                p.as_str().to_lowercase() == original.as_str().to_lowercase()
+                            }))
+                    {
+                        return Err(DriveError::Other(format!(
+                            "Local item {original} conflicts with an Apple bundle. Move the local item outside the sync folder; the bundle is mirrored as {path}."
+                        )));
+                    }
+                }
+            }
+        }
 
         #[cfg(windows)]
         crate::windows_paths::validate(local.keys().chain(tree.nodes.keys()).chain(state.keys()))?;

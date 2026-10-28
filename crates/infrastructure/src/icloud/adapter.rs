@@ -1,8 +1,9 @@
 //! `RemoteDrive` implementation over the iCloud client: maps Apple's item
 //! shapes onto the domain model (NFC names, ms timestamps, typed ids).
 
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use futures_util::stream::{self, StreamExt};
@@ -22,11 +23,15 @@ const LIST_CONCURRENCY: usize = 4;
 
 pub struct IcloudDrive {
     client: Arc<IcloudClient>,
+    downloads: Mutex<HashMap<(RemoteId, String), (String, bool)>>,
 }
 
 impl IcloudDrive {
     pub fn new(client: Arc<IcloudClient>) -> Self {
-        Self { client }
+        Self {
+            client,
+            downloads: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn client(&self) -> &Arc<IcloudClient> {
@@ -65,6 +70,7 @@ pub(crate) fn to_child(item: DriveItem) -> Option<RemoteChild> {
         }
     } else if item.is_file() {
         RemoteNode::File(RemoteFile {
+            is_package: false,
             id: RemoteId(item.drivewsid),
             etag: item.etag,
             size: item.size,
@@ -123,8 +129,43 @@ impl RemoteDrive for IcloudDrive {
     }
 
     async fn download(&self, file: &RemoteFile, dest: &Path) -> Result<(), DriveError> {
-        let url = drive::download_url(&self.client, file.id.as_str()).await?;
-        drive::download_to(&self.client, &url, dest).await
+        let target = self
+            .downloads
+            .lock()
+            .map_err(|_| DriveError::Other("download cache lock poisoned".into()))?
+            .remove(&(file.id.clone(), file.etag.clone()));
+        let (url, package) = match target {
+            Some(target) => target,
+            None => drive::download_target(&self.client, file.id.as_str()).await?,
+        };
+        if package != file.is_package {
+            return Err(DriveError::Other(
+                "iCloud download representation changed; retry sync".into(),
+            ));
+        }
+        drive::download_to(&self.client, &url, dest).await?;
+        if package {
+            let dest = dest.to_path_buf();
+            tokio::task::spawn_blocking(move || super::package::validate(&dest))
+                .await
+                .map_err(|e| DriveError::Other(format!("package validation task failed: {e}")))??;
+        }
+        Ok(())
+    }
+
+    async fn prepare_file(&self, file: &RemoteFile) -> Result<RemoteFile, DriveError> {
+        let mut prepared = file.clone();
+        let target = match drive::download_target(&self.client, file.id.as_str()).await {
+            // Apple's content endpoint rejects ordinary empty documents.
+            Err(DriveError::Api { status: 400, .. }) if file.size == 0 => return Ok(prepared),
+            result => result?,
+        };
+        prepared.is_package = target.1;
+        self.downloads
+            .lock()
+            .map_err(|_| DriveError::Other("download cache lock poisoned".into()))?
+            .insert((file.id.clone(), file.etag.clone()), target);
+        Ok(prepared)
     }
 
     async fn upload(
@@ -136,6 +177,7 @@ impl RemoteDrive for IcloudDrive {
     ) -> Result<RemoteFile, DriveError> {
         let up = drive::upload(&self.client, parent.as_str(), name, src, mtime_ms).await?;
         Ok(RemoteFile {
+            is_package: false,
             id: RemoteId(up.drivewsid),
             etag: up.etag,
             size: up.size,
