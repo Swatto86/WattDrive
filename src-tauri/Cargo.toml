@@ -1,6 +1,6 @@
 [package]
 name = "wattdrive-desktop"
-version = "0.1.5"
+version = "0.1.6"
 description = "WattDrive desktop app — iCloud Drive sync for Windows and Linux"
 edition.workspace = true
 license.workspace = true
