@@ -145,9 +145,13 @@ it never replaces the original Apple bundle. Changes made to the bundle on
 iCloud download a fresh archive. To delete a bundle, remove it on iCloud; its
 unchanged local archive then goes to WattDrive's local trash.
 
+If another iCloud item already uses the archive's `.zip` name, WattDrive uses
+`name.extension (iCloud package 1).zip` (or the next available number). It
+remembers that name on later syncs, even if the conflicting item is removed.
+Existing files and folders keep their names.
+
 Extract bundles outside the sync folder. An extracted folder at the original
-bundle path, or an iCloud file already using the archive's `.zip` name, stops
-sync with an explanation instead of risking an overwrite.
+bundle path stops sync with an explanation instead of risking an overwrite.
 
 ## Configuration
 

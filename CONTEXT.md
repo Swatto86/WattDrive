@@ -14,14 +14,23 @@ also supported; macOS remains outside the current scope.
 
 ## Decisions
 
+- **2026-10-29 Package archive collisions (0.1.7).** Reserve remote and persisted
+  paths before assigning archive names, including case aliases on Windows.
+  Prefer `.zip`; collisions use ` (iCloud package N).zip`. Reuse the persisted
+  path by remote ID while it still belongs to the same source name and is not
+  occupied by a real remote item. The existing state schema stores the mapping.
+  Keep the original source path separately for the extracted-bundle guard.
+  Regression passes cover first sync, later collisions, local edits, folder and
+  case collisions, removal of the competing item, and settling on repeat syncs.
+
 - **2026-10-28 Apple package downloads.** Apple's listing labels packages FILE
   and reports the unpacked size, but docws returns a package_token pointing to a
   ZIP. Resolve new remote versions before planning and map packages to `.zip`
   names. Validate archive structure and entry CRCs without extracting: this
   preserves Mac metadata and symlinks on Windows/Linux. Package ZIPs are download
   mirrors; local deletion restores the archive and local edits keep a conflict
-  copy, never replace the source bundle. Name collisions and extracted originals
-  stop the pass before mutations. Persist is_package with an additive SQLite
+  copy, never replace the source bundle. Extracted originals stop the pass before
+  mutations; archive name collisions are resolved as described above. Persist is_package with an additive SQLite
   column (old rows default false), and record the actual local archive size.
   Unchanged remote versions reuse persisted classification. No schema removal
   or version bump is involved; installation rollback retains a pre-change DB copy.

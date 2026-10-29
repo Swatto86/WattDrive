@@ -110,7 +110,7 @@ impl SyncEngine {
             _ => None,
         })
         .collect();
-        remote_tree::prepare_files(
+        let package_originals = remote_tree::prepare_files(
             self.drive.as_ref(),
             &mut tree,
             &state,
@@ -121,22 +121,16 @@ impl SyncEngine {
         )
         .await?;
 
-        for (path, node) in &tree.nodes {
-            if matches!(node, wattdrive_domain::RemoteNode::File(file) if file.is_package) {
-                if let Some(original) = path.as_str().strip_suffix(".zip") {
-                    let original = wattdrive_domain::RelPath::new(original)
-                        .map_err(|e| DriveError::Other(e.to_string()))?;
-                    if local.contains_key(&original)
-                        || (cfg!(windows)
-                            && local.keys().any(|p| {
-                                p.as_str().to_lowercase() == original.as_str().to_lowercase()
-                            }))
-                    {
-                        return Err(DriveError::Other(format!(
+        for (path, original) in &package_originals {
+            if local.contains_key(original)
+                || (cfg!(windows)
+                    && local
+                        .keys()
+                        .any(|p| p.as_str().to_lowercase() == original.as_str().to_lowercase()))
+            {
+                return Err(DriveError::Other(format!(
                             "Local item {original} conflicts with an Apple bundle. Move the local item outside the sync folder; the bundle is mirrored as {path}."
                         )));
-                    }
-                }
             }
         }
 

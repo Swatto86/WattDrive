@@ -96,22 +96,117 @@ async fn package_edits_and_local_folder_deletion_never_replace_the_bundle() {
 }
 
 #[tokio::test]
-async fn package_archive_name_collision_stops_before_changes() {
+async fn package_archive_name_collision_preserves_both_and_settles() {
     let r = rig();
     r.drive.add_package("Project.xcodeproj", b"archive", 10);
     r.drive
         .add_file("Project.xcodeproj.zip", b"existing zip", 10);
     write_local(&r.root, "keep.txt", b"keep", 10);
+    assert_eq!(run(&r.engine).await.downloaded, 2);
+    assert_eq!(
+        std::fs::read(r.root.join("Project.xcodeproj.zip")).unwrap(),
+        b"existing zip"
+    );
+    let archive = r.root.join("Project.xcodeproj (iCloud package 1).zip");
+    assert_eq!(std::fs::read(&archive).unwrap(), b"archive");
+    assert_eq!(run(&r.engine).await.planned, 0);
+    r.drive.remove("Project.xcodeproj.zip");
+    run(&r.engine).await;
+    assert_eq!(std::fs::read(&archive).unwrap(), b"archive");
+    assert_eq!(run(&r.engine).await.planned, 0);
+    assert_eq!(r.drive.trashed_count(), 0);
+    assert!(!r.root.join("Project.xcodeproj.zip").exists());
+}
+
+#[tokio::test]
+async fn package_archive_names_avoid_folders_and_other_reserved_names() {
+    let r = rig();
+    r.drive.add_package("Project.xcodeproj", b"archive", 10);
+    r.drive
+        .add_file("Project.xcodeproj.zip/child.txt", b"child", 10);
+    r.drive
+        .add_file("Project.xcodeproj (iCloud package 1).zip", b"existing", 10);
+    run(&r.engine).await;
+    assert_eq!(
+        std::fs::read(r.root.join("Project.xcodeproj (iCloud package 2).zip")).unwrap(),
+        b"archive"
+    );
+    assert_eq!(
+        std::fs::read(r.root.join("Project.xcodeproj.zip/child.txt")).unwrap(),
+        b"child"
+    );
+    assert_eq!(run(&r.engine).await.planned, 0);
+}
+
+#[tokio::test]
+async fn a_new_remote_collision_relocates_the_archive_and_keeps_local_edits() {
+    let r = rig();
+    r.drive
+        .add_package("Project.xcodeproj", b"archive", 1_700_000_000_000);
+    run(&r.engine).await;
+    write_local(
+        &r.root,
+        "Project.xcodeproj.zip",
+        b"edited archive",
+        1_700_000_010_000,
+    );
+    r.drive.add_file(
+        "Project.xcodeproj.zip",
+        b"new ordinary zip",
+        1_700_000_020_000,
+    );
+    let report = run(&r.engine).await;
+    assert_eq!(report.conflicts, 1);
+    assert_eq!(report.uploaded, 0);
+    assert_eq!(
+        std::fs::read(r.root.join("Project.xcodeproj (iCloud package 1).zip")).unwrap(),
+        b"archive"
+    );
+    assert_eq!(
+        std::fs::read(r.root.join("Project.xcodeproj.zip")).unwrap(),
+        b"new ordinary zip"
+    );
+    assert!(std::fs::read_dir(&r.root).unwrap().any(|entry| {
+        std::fs::read(entry.unwrap().path()).is_ok_and(|bytes| bytes == b"edited archive")
+    }));
+    assert_eq!(r.drive.trashed_count(), 0);
+    run(&r.engine).await;
+    assert_eq!(run(&r.engine).await.planned, 0);
+}
+
+#[tokio::test]
+async fn renamed_package_archives_still_protect_the_original_bundle_path() {
+    let r = rig();
+    r.drive.add_package("Project.xcodeproj", b"archive", 10);
+    r.drive
+        .add_file("Project.xcodeproj.zip", b"ordinary zip", 10);
+    write_local(&r.root, "Project.xcodeproj/project.txt", b"local", 10);
     assert!(r
         .engine
         .run_once(&|_| {})
         .await
         .unwrap_err()
         .to_string()
-        .contains("collides"));
-    assert!(!r.drive.exists("keep.txt"));
+        .contains("conflicts with an Apple bundle"));
     assert_eq!(r.drive.trashed_count(), 0);
-    assert!(!r.root.join("Project.xcodeproj.zip").exists());
+    assert!(!r
+        .root
+        .join("Project.xcodeproj (iCloud package 1).zip")
+        .exists());
+}
+
+#[cfg(windows)]
+#[tokio::test]
+async fn package_archive_names_avoid_case_aliases() {
+    let r = rig();
+    r.drive.add_package("Project.xcodeproj", b"archive", 10);
+    r.drive.add_file("PROJECT.XCODEPROJ.ZIP", b"existing", 10);
+    run(&r.engine).await;
+    assert_eq!(
+        std::fs::read(r.root.join("Project.xcodeproj (iCloud package 1).zip")).unwrap(),
+        b"archive"
+    );
+    assert_eq!(run(&r.engine).await.planned, 0);
 }
 
 #[tokio::test]

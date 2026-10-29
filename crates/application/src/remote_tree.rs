@@ -22,7 +22,7 @@ pub async fn prepare_files(
     // true means replacing remote content: recheck even an adopted baseline.
     transfers: &BTreeMap<RelPath, bool>,
     progress: &(dyn Fn(usize, usize) + Sync),
-) -> Result<(), DriveError> {
+) -> Result<BTreeMap<RelPath, RelPath>, DriveError> {
     let known: HashMap<_, _> = state.values().map(|s| (&s.remote_id, s)).collect();
     for node in tree.nodes.values_mut() {
         if let RemoteNode::File(file) = node {
@@ -60,13 +60,47 @@ pub async fn prepare_files(
         done += 1;
         progress(done, total);
     }
+    // Reserve source names even for packages, and old state paths so an archive
+    // cannot take over another item's baseline. Windows aliases share a slot.
+    let source_names: HashSet<_> = tree.nodes.keys().map(path_key).collect();
+    let mut reserved = source_names.clone();
+    reserved.extend(state.keys().map(path_key));
+    let saved_paths: HashMap<_, _> = state
+        .iter()
+        .filter(|(_, entry)| entry.is_package)
+        .map(|(path, entry)| (&entry.remote_id, path))
+        .collect();
     let mut nodes = BTreeMap::new();
+    let mut originals = BTreeMap::new();
     for (path, node) in std::mem::take(&mut tree.nodes) {
-        let mut mapped = path;
+        let mut mapped = path.clone();
         if let RemoteNode::File(file) = &node {
             if file.is_package {
-                mapped = RelPath::new(&format!("{mapped}.zip"))
-                    .map_err(|e| DriveError::Other(e.to_string()))?;
+                mapped = match saved_paths.get(&file.id).filter(|saved| {
+                    is_archive_name(&path, saved) && !source_names.contains(&path_key(saved))
+                }) {
+                    Some(saved) => (*saved).clone(),
+                    None => {
+                        let mut index = 0u32;
+                        loop {
+                            let name = if index == 0 {
+                                format!("{path}.zip")
+                            } else {
+                                format!("{path} (iCloud package {index}).zip")
+                            };
+                            let candidate = RelPath::new(&name)
+                                .map_err(|e| DriveError::Other(e.to_string()))?;
+                            if !reserved.contains(&path_key(&candidate)) {
+                                break candidate;
+                            }
+                            index = index.checked_add(1).ok_or_else(|| {
+                                DriveError::Other("No available package archive name".into())
+                            })?;
+                        }
+                    }
+                };
+                reserved.insert(path_key(&mapped));
+                originals.insert(mapped.clone(), path);
             }
         }
         if nodes.insert(mapped.clone(), node).is_some() {
@@ -76,7 +110,25 @@ pub async fn prepare_files(
         }
     }
     tree.nodes = nodes;
-    Ok(())
+    Ok(originals)
+}
+
+fn path_key(path: &RelPath) -> String {
+    if cfg!(windows) {
+        path.as_str().to_lowercase()
+    } else {
+        path.to_string()
+    }
+}
+
+fn is_archive_name(original: &RelPath, saved: &RelPath) -> bool {
+    saved.as_str() == format!("{original}.zip")
+        || saved
+            .as_str()
+            .strip_prefix(&format!("{original} (iCloud package "))
+            .and_then(|rest| rest.strip_suffix(").zip"))
+            .and_then(|index| index.parse::<u32>().ok())
+            .is_some_and(|index| index > 0)
 }
 
 pub async fn walk(drive: &dyn RemoteDrive) -> Result<RemoteTree, DriveError> {
