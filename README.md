@@ -142,7 +142,9 @@ folder operations as well as transfers.
 Use **View messages** to open detailed sync errors. If the connection fails or
 iCloud asks WattDrive to slow down, new transfers stop while active transfers
 finish. Completed work is saved and unfinished items are checked again on the
-next sync. Busy-server responses pause new work, and the next automatic poll
+next sync. If iCloud explicitly rejects final registration as busy, WattDrive
+retries that step up to three times with a delay, reusing the uploaded content.
+Other busy-server responses pause new work, and the next automatic poll
 waits until the configured interval after the pass ends. Sign-in problems
 require signing in again.
 

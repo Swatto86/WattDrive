@@ -22,6 +22,10 @@ also supported; macOS remains outside the current scope.
   mutations. Recognized busy codes use the existing rate-limit abort path;
   automatic polling waits after pass completion and local file events cannot
   bypass an offline wait. Do not blindly replay ambiguous upload requests.
+  Explicit `ZONE_BUSY` / `SERVER_OVERLOADED` replies at registration retry up
+  to three times with backoff, retaining the same document ID and receipt;
+  content is not uploaded again. Numeric server delays up to 30 s are honored,
+  longer/unparseable delays stop the pass. Unknown errors do not retry.
 
 - **2026-10-30 Listing pipeline.** Use a rolling queue of up to eight batches
   of ten folders, rather than waiting for each complete depth of the tree.
@@ -29,7 +33,9 @@ also supported; macOS remains outside the current scope.
   with four workers still took 838.7 s for 3,245 folders. A larger read-only
   sample of 160 saved folders took 46.0 s with four batches of forty, 67.5 s
   with four batches of ten, and 20.1 s with eight batches of ten; no request
-  failed. Sample timing is not a whole-drive speed guarantee. Preserve
+  failed. The installed eight-worker run then listed all 3,245 folders in
+  515.5 s, 38.5% less time than the four-worker run, without listing errors.
+  Preserve
   the missing-folder abort before any sync mutations. Listing progress shows
   folders checked/items found; file failures reach the popout during the pass.
 

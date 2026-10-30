@@ -18,7 +18,7 @@ struct Activity {
     slots: AtomicUsize,
 }
 
-async fn request(socket: &mut TcpStream) -> (String, serde_json::Value) {
+pub(super) async fn request(socket: &mut TcpStream) -> (String, serde_json::Value) {
     let mut bytes = Vec::new();
     let header_end = loop {
         let mut chunk = [0; 4096];

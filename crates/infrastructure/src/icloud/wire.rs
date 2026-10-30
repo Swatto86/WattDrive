@@ -15,13 +15,23 @@ pub struct ServiceError {
     error_code: String,
     #[serde(rename = "serverErrorCode", default)]
     server_error_code: String,
+    #[serde(rename = "retryAfter", default)]
+    pub retry_after: Option<u64>,
 }
 
 impl ServiceError {
     pub fn is_busy(&self) -> bool {
+        self.busy_code().is_some()
+    }
+
+    pub fn busy_code(&self) -> Option<&'static str> {
         [&self.error_code, &self.server_error_code]
             .iter()
-            .any(|code| matches!(code.as_str(), "ZONE_BUSY" | "SERVER_OVERLOADED"))
+            .find_map(|code| match code.as_str() {
+                "ZONE_BUSY" => Some("ZONE_BUSY"),
+                "SERVER_OVERLOADED" => Some("SERVER_OVERLOADED"),
+                _ => None,
+            })
     }
 }
 
@@ -312,6 +322,11 @@ mod tests {
             assert_eq!(error.is_busy(), busy);
         }
         assert!(serde_json::from_str::<ServiceError>("not JSON").is_err());
+        let error: ServiceError =
+            serde_json::from_str(r#"{"error_code":"ZONE_BUSY","retryAfter":10}"#).unwrap();
+        assert_eq!(error.retry_after, Some(10));
+        assert_eq!(error.busy_code(), Some("ZONE_BUSY"));
+        assert!(serde_json::from_str::<ServiceError>(r#"{"retryAfter":-1}"#).is_err());
     }
 
     #[test]

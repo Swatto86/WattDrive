@@ -664,26 +664,34 @@ pub async fn check_status(resp: Response, what: &str) -> Result<Response, DriveE
         return Ok(resp);
     }
     let body = resp.text().await.unwrap_or_default();
-    Err(match status.as_u16() {
+    Err(status_error(status.as_u16(), &body, what))
+}
+
+pub(super) fn status_error(status: u16, body: &str, what: &str) -> DriveError {
+    match status {
         429 | 503 => DriveError::RateLimited,
         401 | 421 | 450 => DriveError::SignInRequired(format!("{what}: session rejected")),
         409 | 502
-            if serde_json::from_str::<ServiceError>(&body).is_ok_and(|error| error.is_busy()) =>
+            if serde_json::from_str::<ServiceError>(body).is_ok_and(|error| error.is_busy()) =>
         {
+            tracing::warn!(operation = what, status, "iCloud service is busy");
             DriveError::RateLimited
         }
         s => DriveError::Api {
             status: s,
-            message: format!("{what}: {}", snippet(&body)),
+            message: format!("{what}: {}", snippet(body)),
         },
-    })
+    }
 }
 
 async fn expect_ok(resp: Response, what: &str) -> Result<(), DriveError> {
     check_status(resp, what).await.map(|_| ())
 }
 
-async fn decode_json<T: DeserializeOwned>(resp: Response, what: &str) -> Result<T, DriveError> {
+pub(super) async fn decode_json<T: DeserializeOwned>(
+    resp: Response,
+    what: &str,
+) -> Result<T, DriveError> {
     let resp = check_status(resp, what).await?;
     let status = resp.status().as_u16();
     let body = resp.text().await.map_err(net)?;

@@ -277,11 +277,8 @@ pub async fn upload(
             starting_document_id: parent_doc,
         },
     };
-    let resp: DocumentUpdateResponse = client
-        .service_json("register upload", &|http, h| {
-            http.post(&update_url).headers(h).json(&update)
-        })
-        .await?;
+    let resp: DocumentUpdateResponse =
+        super::registration::register(client, &update_url, &update).await?;
     let result = resp.results.into_iter().next().ok_or(DriveError::Api {
         status: 200,
         message: "register upload: empty response".into(),

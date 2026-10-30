@@ -10,10 +10,13 @@ pub mod adapter;
 pub mod auth;
 pub mod drive;
 mod package;
+mod registration;
 pub mod session;
 pub mod srp;
 mod wire;
 
+#[cfg(test)]
+mod registration_tests;
 #[cfg(test)]
 mod transfer_tests;
 
