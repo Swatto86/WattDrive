@@ -72,14 +72,8 @@ impl Executor<'_> {
             SyncAction::RecordFolder { path, remote_id } => {
                 self.record_folder(path, remote_id).await
             }
-            SyncAction::Download { path, remote } => self.download(path, remote).await,
-            SyncAction::Upload { path, replaces } => self.upload(path, replaces.as_ref()).await,
-            SyncAction::Adopt { path, remote } => {
-                let (_, mtime) = stamp(self.abs(path)).await?;
-                Ok(self
-                    .state
-                    .put(path, &SyncEntry::file(remote, mtime))
-                    .await?)
+            SyncAction::Download { .. } | SyncAction::Upload { .. } | SyncAction::Adopt { .. } => {
+                self.execute_file(action).await
             }
             SyncAction::TrashLocal { path, kind } => self.trash_local(path, *kind).await,
             SyncAction::TrashRemote {
@@ -92,6 +86,22 @@ impl Executor<'_> {
                 self.forget(path, *kind).await
             }
             SyncAction::Forget { path } => Ok(self.state.remove(path).await?),
+        }
+    }
+
+    /// File actions only read the folder map and operate on distinct planned paths.
+    pub async fn execute_file(&self, action: &SyncAction) -> Result<(), ExecError> {
+        match action {
+            SyncAction::Download { path, remote } => self.download(path, remote).await,
+            SyncAction::Upload { path, replaces } => self.upload(path, replaces.as_ref()).await,
+            SyncAction::Adopt { path, remote } => {
+                let (_, mtime) = stamp(self.abs(path)).await?;
+                Ok(self
+                    .state
+                    .put(path, &SyncEntry::file(remote, mtime))
+                    .await?)
+            }
+            _ => Err(ExecError::Other("Non-file action in transfer queue".into())),
         }
     }
 

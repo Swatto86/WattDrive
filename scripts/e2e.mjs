@@ -75,6 +75,32 @@ try {
   await browser.$('#view-signin').waitForDisplayed();
   saved = JSON.parse(await readFile(join(root, 'settings.json'), 'utf8'));
   assert.equal(saved.pollIntervalSecs, 60);
+  // Exercise the real status-event boundary with synthetic failures, never a live account.
+  await browser.execute(async () => {
+    await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
+      event: 'sync-status', payload: {
+        state: 'offline', detail: 'Network interrupted', signedIn: true,
+        appleId: 'test@example.invalid', syncFolder: 'Synthetic mirror', lastSync: null, progress: null,
+        lastReport: { planned: 20, downloaded: 3, uploaded: 2, trashedLocal: 0, trashedRemote: 0,
+          conflicts: 0, foldersCreated: 1, aborted: 'Network interrupted',
+          failures: [{ action: 'upload', path: 'sample.txt', error: 'Request failed (https://example.invalid/upload?token=secret-probe)' }] },
+      },
+    });
+  });
+  await browser.$('#view-main').waitForDisplayed();
+  assert.ok(!(await browser.$('#view-main').getText()).includes('sample.txt'));
+  assert.ok((await browser.$('#btn-messages').getText()).includes('(1)'));
+  await browser.$('#btn-messages').click();
+  await browser.$('#messages-dialog').waitForDisplayed();
+  assert.ok((await browser.$('#messages-list').getText()).includes('sample.txt'));
+  assert.ok(!(await browser.$('#messages-list').getText()).includes('secret-probe'));
+  assert.equal(await browser.execute(() => document.activeElement?.textContent), 'Close');
+  await browser.keys('Escape');
+  await browser.$('#messages-dialog').waitForDisplayed({ reverse: true });
+  assert.equal(await browser.execute(() => document.activeElement?.id), 'btn-messages');
+  await browser.$('#btn-messages').click();
+  await browser.$('#messages-dialog button').click();
+  await browser.$('#messages-dialog').waitForDisplayed({ reverse: true });
   if (liveUpdater) {
     await browser.$('#btn-about').click();
     await browser.$('#btn-check-update').waitForDisplayed();
@@ -88,7 +114,7 @@ try {
   await browser.waitUntil(async () => {
     try { await browser.getTitle(); return false; } catch { return true; }
   }, { timeout: 10000, timeoutMsg: 'Quit must close the native app' });
-  console.log('WebDriver passed: boot, sign-in validation, settings validation/save/restart/replace, clean quit.');
+  console.log('WebDriver passed: boot, sign-in validation, settings persistence, message popout/privacy/keyboard, clean quit.');
 } catch (error) {
   if (browser) {
     try { console.error({ url: await browser.getUrl(), sourceLength: (await browser.getPageSource()).length, windows: await browser.getWindowHandles() }); } catch { /* app exited */ }

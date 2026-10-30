@@ -132,6 +132,16 @@ WattDrive when the device asks. The window says so while it waits.
 The first pass creates the sync folder if needed and mirrors iCloud Drive into
 it.
 
+Ordinary files sync in both directions, with up to four transfers at once.
+Existing files with matching sizes and modification times are recorded without
+transferring their contents. The progress count includes these records and
+folder operations as well as transfers.
+
+Use **View messages** to open detailed sync errors. If the connection fails or
+iCloud asks WattDrive to slow down, new transfers stop while active transfers
+finish. Completed work is saved and unfinished items are checked again on the
+next sync. Sign-in problems require signing in again.
+
 ### Apple bundles
 
 iCloud delivers Apple bundles (such as Xcode projects, apps and frameworks) as

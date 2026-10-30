@@ -14,6 +14,18 @@ also supported; macOS remains outside the current scope.
 
 ## Decisions
 
+- **2026-10-30 Parallel transfers and sync messages.** File transfers and
+  adoption records share a rolling four-operation queue. Conflict preservation
+  and folder setup finish first; deletions run after transfers drain. Fatal
+  connection, rate-limit, authentication, state-store or prerequisite failures
+  stop new work; active transfers finish and persist before returning. Failed
+  work is re-planned on the next pass, without blindly replaying upload writes.
+  Progress counts completed actions and does not jump to completion on abort.
+  Detailed sync messages live in a keyboard-accessible dialog, with only a
+  short status on the main screen. Transport errors strip signed URLs before
+  display/logging. Synthetic delayed-provider tests cover concurrency, draining,
+  retry and settling; WebDriver covers the message dialog and keyboard focus.
+
 - **2026-10-29 Package archive collisions (0.1.7).** Reserve remote and persisted
   paths before assigning archive names, including case aliases on Windows.
   Prefer `.zip`; collisions use ` (iCloud package N).zip`. Reuse the persisted

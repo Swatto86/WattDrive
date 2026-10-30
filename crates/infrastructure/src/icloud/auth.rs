@@ -68,8 +68,9 @@ pub struct IcloudClient {
     reauth: tokio::sync::Mutex<()>,
 }
 
-fn net(e: reqwest::Error) -> DriveError {
-    DriveError::Network(e.to_string())
+pub(super) fn net(e: reqwest::Error) -> DriveError {
+    // Signed content URLs contain credentials; never put them in UI or logs.
+    DriveError::Network(e.without_url().to_string())
 }
 
 impl IcloudClient {
@@ -676,6 +677,22 @@ async fn decode_json<T: DeserializeOwned>(resp: Response, what: &str) -> Result<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn network_errors_remove_signed_urls() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let error = Client::new()
+            .get(format!("http://127.0.0.1:{port}/upload?token=secret-probe"))
+            .send()
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("secret-probe"));
+        let rendered = net(error).to_string();
+        assert!(!rendered.contains("secret-probe"));
+        assert!(!rendered.contains("http://"));
+    }
 
     #[test]
     fn credentials_debug_is_redacted() {

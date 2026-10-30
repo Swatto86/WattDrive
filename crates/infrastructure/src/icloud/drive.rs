@@ -133,11 +133,7 @@ pub async fn download_to(client: &IcloudClient, url: &str, dest: &Path) -> Resul
         }
         let mut resp = check_status(resp, "download").await?;
         let mut file = tokio::fs::File::create(dest).await?;
-        while let Some(chunk) = resp
-            .chunk()
-            .await
-            .map_err(|e| DriveError::Network(e.to_string()))?
-        {
+        while let Some(chunk) = resp.chunk().await.map_err(super::auth::net)? {
             file.write_all(&chunk).await?;
         }
         file.flush().await?;

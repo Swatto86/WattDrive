@@ -6,6 +6,7 @@
 //! Everything here is testable with a fake drive and a temp directory.
 
 mod engine;
+mod execution;
 mod executor;
 pub mod ignore;
 pub mod local;
@@ -18,6 +19,8 @@ mod windows_paths;
 mod engine_tests;
 #[cfg(test)]
 mod fake_drive;
+#[cfg(test)]
+mod parallel_tests;
 #[cfg(test)]
 mod test_drives;
 

@@ -167,75 +167,7 @@ impl SyncEngine {
             host: &self.host,
         };
 
-        let total = actions.len();
-        for (i, action) in actions.iter().enumerate() {
-            progress(Progress::Executing {
-                done: i,
-                total,
-                current: action.path().to_string(),
-            });
-            tracing::debug!("{}", describe(action));
-            match exec.execute(action).await {
-                Ok(()) => tally(&mut report, action),
-                Err(e) => {
-                    tracing::warn!("{} failed: {e}", describe(action));
-                    if let crate::executor::ExecError::Drive(DriveError::SignInRequired(m)) = e {
-                        return Err(DriveError::SignInRequired(m));
-                    }
-                    // A failed prerequisite must never be followed by the
-                    // download that would overwrite the unpreserved original.
-                    let aborts =
-                        e.aborts_pass() || matches!(action, SyncAction::MoveLocalAside { .. });
-                    report.failures.push(ActionFailure {
-                        path: action.path().to_string(),
-                        action: action_name(action).to_string(),
-                        error: e.to_string(),
-                    });
-                    if aborts {
-                        report.aborted = Some(e.to_string());
-                        break;
-                    }
-                }
-            }
-        }
-        progress(Progress::Executing {
-            done: total,
-            total,
-            current: String::new(),
-        });
+        crate::execution::execute_plan(&mut exec, &actions, &mut report, progress).await?;
         Ok(report)
-    }
-}
-
-fn action_name(a: &SyncAction) -> &'static str {
-    match a {
-        SyncAction::MoveLocalAside { .. } => "keep conflict copy",
-        SyncAction::CreateLocalFolder { .. } => "create local folder",
-        SyncAction::CreateRemoteFolder { .. } => "create iCloud folder",
-        SyncAction::RecordFolder { .. } => "record folder",
-        SyncAction::Download { .. } => "download",
-        SyncAction::Upload { .. } => "upload",
-        SyncAction::Adopt { .. } => "adopt",
-        SyncAction::TrashLocal { .. } => "move to local trash",
-        SyncAction::TrashRemote { .. } => "move to iCloud trash",
-        SyncAction::Forget { .. } => "forget",
-    }
-}
-
-fn describe(a: &SyncAction) -> String {
-    format!("{} {}", action_name(a), a.path())
-}
-
-fn tally(report: &mut SyncReport, a: &SyncAction) {
-    match a {
-        SyncAction::MoveLocalAside { .. } => report.conflicts += 1,
-        SyncAction::CreateLocalFolder { .. } | SyncAction::CreateRemoteFolder { .. } => {
-            report.folders_created += 1
-        }
-        SyncAction::Download { .. } => report.downloaded += 1,
-        SyncAction::Upload { .. } => report.uploaded += 1,
-        SyncAction::TrashLocal { .. } => report.trashed_local += 1,
-        SyncAction::TrashRemote { .. } => report.trashed_remote += 1,
-        SyncAction::RecordFolder { .. } | SyncAction::Adopt { .. } | SyncAction::Forget { .. } => {}
     }
 }

@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import "./styles.css";
+import { setupMessages } from "./messages";
 
 // ---- Backend DTOs (mirror src-tauri/src/status.rs, commands.rs, settings.rs) ----
 type SyncState =
@@ -93,6 +94,7 @@ app.innerHTML = `
   <div class="topbar">
     <div class="brand"><img src="/icon.png" alt="" /> WattDrive</div>
     <div>
+      <button id="btn-messages" class="btn btn-sm btn-ghost" aria-haspopup="dialog">View messages</button>
       <button id="btn-settings" class="btn btn-sm btn-ghost">Settings</button>
       <button id="btn-about" class="btn btn-sm btn-ghost">About</button>
     </div>
@@ -153,7 +155,6 @@ app.innerHTML = `
       <div class="panel">
         <h2>Last sync <span id="last-sync" class="muted"></span></h2>
         <div id="stats" class="stats"></div>
-        <ul id="failures" class="failures"></ul>
       </div>
     </section>
 
@@ -196,6 +197,7 @@ app.innerHTML = `
 </div>`;
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
+const renderMessages = setupMessages();
 const views = ["view-signin", "view-code", "view-main", "view-settings", "view-about"] as const;
 type View = (typeof views)[number];
 let current: View = "view-main";
@@ -223,7 +225,11 @@ function render(s: Status): void {
   }
   $("state-dot").className = `state-dot ${s.state}`;
   $("state-title").textContent = STATE_LABEL[s.state] + (s.appleId ? ` · ${s.appleId}` : "");
-  $("state-detail").textContent = s.detail;
+  $("state-detail").textContent = s.state === "offline"
+    ? "Sync interrupted. Will retry automatically; see messages."
+    : s.state === "error" ? "Some items need attention. See messages."
+    : s.state === "signInRequired" ? "Sign in again to continue. See messages."
+    : s.detail;
   $("folder-path").textContent = s.syncFolder;
   $("btn-pause").textContent = s.state === "paused" ? "Resume" : "Pause";
   $<HTMLButtonElement>("btn-sync").disabled = s.state === "syncing";
@@ -253,18 +259,7 @@ function render(s: Status): void {
       .map(([n, l]) => `<div class="stat"><div class="n">${n}</div><div class="l">${l}</div></div>`)
       .join("");
   }
-  const fails = $("failures");
-  fails.innerHTML = "";
-  for (const f of r?.failures ?? []) {
-    const li = document.createElement("li");
-    li.textContent = `${f.action} — ${f.path}: ${f.error}`;
-    fails.appendChild(li);
-  }
-  if (r?.aborted) {
-    const li = document.createElement("li");
-    li.textContent = `Stopped early: ${r.aborted}`;
-    fails.appendChild(li);
-  }
+  renderMessages(s);
 }
 
 // ---- Sign-in flow ----
