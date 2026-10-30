@@ -69,9 +69,11 @@ jobs:
           releaseBody: |
             Two-way iCloud Drive sync for Windows and Linux.
 
-            - Windows: native tray, Credential Manager vault key, per-user installer and portable EXE.
-            - Reject unsafe Windows filenames, case collisions and reparse points before sync changes.
-            - Updated dependencies fix known security advisories. Legacy ZIP/tar updater support is removed; signed raw AppImage and NSIS updates remain supported.
+            - Faster folder listing with eight concurrent batches and visible folder/item counts.
+            - Up to four parallel file transfers, with serialized iCloud file-record changes to prevent overlapping-write errors.
+            - Bounded retries for explicit iCloud busy responses reuse the uploaded content. Interrupted passes save completed work and wait before retrying.
+            - Sync messages open in a separate dialog, including failures reported during an active sync. Signed service URLs are hidden from error messages.
+            - Windows and Linux automated checks, local HTTP transfer/error tests, and real-window UI tests passed.
             - npm audit reports zero vulnerabilities, including development tools. Four Linux maintenance notices remain visible: RUSTSEC-2024-0370 and RUSTSEC-2026-0370/0371/0372. They are not security vulnerabilities and have no compatible published fix; recheck by 2026-11-10.
 
             Windows 10/11 x64 requires the [Evergreen WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/). Linux x86_64 requires FUSE 2 (or --appimage-extract-and-run), a desktop session and an unlocked Secret Service keyring. See the README for installation and sign-in. Apple Passwords is not included.

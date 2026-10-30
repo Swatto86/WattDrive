@@ -14,6 +14,13 @@ also supported; macOS remains outside the current scope.
 
 ## Decisions
 
+- **2026-10-30 Release 0.1.8 acceptance exception.** Swatto explicitly authorized
+  publication without the disposable-account/workspace live acceptance check
+  for this release. No disposable account is available. This is a one-release
+  exception; the normal release requirement remains in force. Windows/Linux
+  automated gates, synthetic HTTP integration tests, normal-use sync observation,
+  local installation and exact-commit CI remain required.
+
 - **2026-10-30 iCloud write serialization.** Live concurrent upload registration
   returned `ZONE_BUSY` (409), `SERVER_OVERLOADED` (502), and `ATOMIC_FAILURE`
   (400). Keep content transfers parallel but serialize register/create/trash
