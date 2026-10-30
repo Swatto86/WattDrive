@@ -15,6 +15,11 @@ use crate::{local, remote_tree};
 pub enum Progress {
     ScanningLocal,
     ListingRemote,
+    ListingProgress {
+        folders: usize,
+        items: usize,
+    },
+    Failed(ActionFailure),
     PreparingRemote {
         done: usize,
         total: usize,
@@ -86,7 +91,10 @@ impl SyncEngine {
         progress(Progress::ScanningLocal);
         let local = local::scan(self.root.clone()).await?;
         progress(Progress::ListingRemote);
-        let mut tree = remote_tree::walk(self.drive.as_ref()).await?;
+        let mut tree = remote_tree::walk_with_progress(self.drive.as_ref(), &|folders, items| {
+            progress(Progress::ListingProgress { folders, items });
+        })
+        .await?;
         let state = self
             .state
             .load_all()

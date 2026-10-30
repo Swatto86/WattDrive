@@ -103,13 +103,24 @@ async fn exercise(failure: usize) {
         "test".into(),
     );
     let progress = Mutex::new(Vec::new());
+    let failures_seen = Mutex::new(Vec::new());
     let result = engine
         .run_once(&|p| {
             if let Progress::Executing { done, total, .. } = p {
                 progress.lock().unwrap().push((done, total));
+            } else if let Progress::Failed(error) = p {
+                failures_seen.lock().unwrap().push(error);
+                assert!(
+                    drive.active.load(Ordering::SeqCst) > 0,
+                    "failure is reported while other transfers are still active"
+                );
             }
         })
         .await;
+    assert_eq!(
+        failures_seen.lock().unwrap().len(),
+        usize::from(failure != 0)
+    );
     assert_eq!(
         drive.peak.load(Ordering::SeqCst),
         4,

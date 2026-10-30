@@ -20,6 +20,8 @@ mod engine_tests;
 #[cfg(test)]
 mod fake_drive;
 #[cfg(test)]
+mod listing_tests;
+#[cfg(test)]
 mod parallel_tests;
 #[cfg(test)]
 mod test_drives;

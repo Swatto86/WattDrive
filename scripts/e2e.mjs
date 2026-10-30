@@ -101,6 +101,22 @@ try {
   await browser.$('#btn-messages').click();
   await browser.$('#messages-dialog button').click();
   await browser.$('#messages-dialog').waitForDisplayed({ reverse: true });
+  await browser.execute(async () => {
+    await window.__TAURI_INTERNALS__.invoke('plugin:event|emit', {
+      event: 'sync-status', payload: {
+        state: 'syncing', detail: 'Listing iCloud: 40 folders checked, 742 items found…',
+        signedIn: true, appleId: 'test@example.invalid', syncFolder: 'Synthetic mirror',
+        lastSync: null, lastReport: null, progress: null,
+        currentFailures: [{ action: 'upload', path: 'live-failure.txt', error: 'Connection failed' }],
+      },
+    });
+  });
+  await browser.waitUntil(async () => (await browser.$('#state-detail').getText()).includes('40 folders'));
+  await browser.$('#btn-messages').click();
+  await browser.$('#messages-dialog').waitForDisplayed();
+  assert.ok((await browser.$('#messages-list').getText()).includes('live-failure.txt'), 'failures visible before pass ends');
+  await browser.keys('Escape');
+  await browser.$('#messages-dialog').waitForDisplayed({ reverse: true });
   if (liveUpdater) {
     await browser.$('#btn-about').click();
     await browser.$('#btn-check-update').waitForDisplayed();

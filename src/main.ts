@@ -39,6 +39,7 @@ interface Status {
   syncFolder: string;
   lastSync: string | null;
   lastReport: Report | null;
+  currentFailures?: Failure[];
   progress: { done: number; total: number; current: string } | null;
 }
 interface Settings {

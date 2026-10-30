@@ -142,6 +142,10 @@ iCloud asks WattDrive to slow down, new transfers stop while active transfers
 finish. Completed work is saved and unfinished items are checked again on the
 next sync. Sign-in problems require signing in again.
 
+While listing, WattDrive shows the number of folders checked and items found.
+It checks up to four small batches at once and explores each branch as results
+arrive. File errors appear in **View messages** during the pass.
+
 ### Apple bundles
 
 iCloud delivers Apple bundles (such as Xcode projects, apps and frameworks) as

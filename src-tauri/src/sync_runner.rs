@@ -266,6 +266,7 @@ impl Loop {
     async fn pass(&mut self) {
         self.set_status(|st| {
             st.state = SyncState::Syncing;
+            st.current_failures.clear();
             st.detail = "Checking iCloud…".into();
             st.progress = None;
         });
@@ -302,6 +303,18 @@ impl Loop {
                 match p {
                     Progress::ScanningLocal => s.detail = "Scanning local folder…".into(),
                     Progress::ListingRemote => s.detail = "Listing iCloud Drive…".into(),
+                    Progress::ListingProgress { folders, items } => {
+                        s.detail = format!(
+                            "Listing iCloud: {folders} folders checked, {items} items found…"
+                        );
+                    }
+                    Progress::Failed(failure) => {
+                        s.current_failures.push(crate::status::FailureDto {
+                            path: failure.path,
+                            action: failure.action,
+                            error: failure.error,
+                        });
+                    }
                     Progress::PreparingRemote { done, total } => {
                         s.detail = format!("Checking file formats: {done} of {total}…");
                     }

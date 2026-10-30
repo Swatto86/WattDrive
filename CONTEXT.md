@@ -14,6 +14,14 @@ also supported; macOS remains outside the current scope.
 
 ## Decisions
 
+- **2026-10-30 Listing pipeline.** Use a rolling queue of up to four batches
+  of ten folders, rather than waiting for each complete depth of the tree.
+  A read-only live benchmark of the same forty folders returned 742 items in
+  29.5 s as one batch, 11.9 s as four batches of ten, and 27.0 s as individual
+  folder calls. This is a sample, not a whole-drive speed guarantee. Preserve
+  the missing-folder abort before any sync mutations. Listing progress shows
+  folders checked/items found; file failures reach the popout during the pass.
+
 - **2026-10-30 Parallel transfers and sync messages.** File transfers and
   adoption records share a rolling four-operation queue. Conflict preservation
   and folder setup finish first; deletions run after transfers drain. Fatal

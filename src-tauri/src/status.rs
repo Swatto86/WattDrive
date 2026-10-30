@@ -85,6 +85,7 @@ pub struct Status {
     /// RFC 3339, when the last pass finished.
     pub last_sync: Option<String>,
     pub last_report: Option<ReportDto>,
+    pub current_failures: Vec<FailureDto>,
     pub progress: Option<ProgressDto>,
 }
 
@@ -98,6 +99,7 @@ impl Status {
             sync_folder,
             last_sync: None,
             last_report: None,
+            current_failures: Vec::new(),
             progress: None,
         }
     }

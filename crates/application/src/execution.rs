@@ -44,7 +44,7 @@ pub async fn execute_plan(
                 let Some((action, result)) = pending.next().await else {
                     break;
                 };
-                record(report, action, result, &mut sign_in);
+                record(report, action, result, &mut sign_in, progress);
                 done += 1;
                 progress(Progress::Executing {
                     done,
@@ -55,7 +55,13 @@ pub async fn execute_plan(
             }
         } else {
             let action = &actions[next];
-            record(report, action, exec.execute(action).await, &mut sign_in);
+            record(
+                report,
+                action,
+                exec.execute(action).await,
+                &mut sign_in,
+                progress,
+            );
             next += 1;
             done += 1;
             progress(Progress::Executing {
@@ -76,6 +82,7 @@ fn record(
     action: &SyncAction,
     result: Result<(), ExecError>,
     sign_in: &mut Option<String>,
+    progress: &(dyn Fn(Progress) + Send + Sync),
 ) {
     match result {
         Ok(()) => tally(report, action),
@@ -91,11 +98,13 @@ fn record(
                         | SyncAction::RecordFolder { .. }
                 );
             tracing::warn!(action = action_name(action), "sync action failed");
-            report.failures.push(ActionFailure {
+            let failure = ActionFailure {
                 path: action.path().to_string(),
                 action: action_name(action).into(),
                 error: e.to_string(),
-            });
+            };
+            progress(Progress::Failed(failure.clone()));
+            report.failures.push(failure);
             if aborts && report.aborted.is_none() {
                 report.aborted = Some(e.to_string());
             }

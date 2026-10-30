@@ -1,8 +1,8 @@
-//! Walk iCloud Drive into a path-keyed tree, one batched listing per level.
+//! Walk iCloud Drive with bounded, rolling batches across folder depths.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
-use futures_util::stream::{self, StreamExt};
+use futures_util::stream::{self, FuturesUnordered, StreamExt};
 use wattdrive_domain::{DriveError, RelPath, RemoteDrive, RemoteId, RemoteNode, SyncEntry};
 
 pub struct RemoteTree {
@@ -131,19 +131,45 @@ fn is_archive_name(original: &RelPath, saved: &RelPath) -> bool {
             .is_some_and(|index| index > 0)
 }
 
+#[cfg(test)]
 pub async fn walk(drive: &dyn RemoteDrive) -> Result<RemoteTree, DriveError> {
+    walk_with_progress(drive, &|_, _| {}).await
+}
+
+pub async fn walk_with_progress(
+    drive: &dyn RemoteDrive,
+    progress: &(dyn Fn(usize, usize) + Sync),
+) -> Result<RemoteTree, DriveError> {
+    let started = std::time::Instant::now();
+    let mut completed = 0;
+    let mut batches = 0;
     let root_id = drive.root();
     let mut nodes = BTreeMap::new();
     let mut folder_ids = HashMap::new();
     let mut seen = HashSet::from([root_id.clone()]);
     // Folders still to list, by id; None = root.
-    let mut frontier: Vec<(Option<RelPath>, RemoteId)> = vec![(None, root_id.clone())];
-
-    while !frontier.is_empty() {
-        let ids: Vec<RemoteId> = frontier.iter().map(|(_, id)| id.clone()).collect();
-        let paths: HashMap<RemoteId, Option<RelPath>> =
-            frontier.drain(..).map(|(p, id)| (id, p)).collect();
-        let listings = drive.list_children_many(&ids).await?;
+    let mut frontier = VecDeque::from([(None, root_id.clone())]);
+    let mut pending = FuturesUnordered::new();
+    progress(0, 0);
+    loop {
+        // Smaller batches avoid Apple's long serial response times, while a
+        // rolling queue lets fast branches descend without waiting for a level.
+        while !frontier.is_empty() && pending.len() < 4 {
+            let paths: HashMap<RemoteId, Option<RelPath>> = frontier
+                .drain(..frontier.len().min(10))
+                .map(|(path, id)| (id, path))
+                .collect();
+            pending.push(async move {
+                let ids: Vec<_> = paths.keys().cloned().collect();
+                let result = drive.list_children_many(&ids).await;
+                (paths, ids, result)
+            });
+        }
+        let Some((paths, ids, result)) = pending.next().await else {
+            break;
+        };
+        let listings = result?;
+        batches += 1;
         // A folder we asked about but got no listing for must stop the pass:
         // treating its children as absent would read as "deleted on iCloud"
         // and trash their local copies.
@@ -186,12 +212,21 @@ pub async fn walk(drive: &dyn RemoteDrive) -> Result<RemoteTree, DriveError> {
                         continue;
                     }
                     folder_ids.insert(path.clone(), id.clone());
-                    frontier.push((Some(path.clone()), id.clone()));
+                    frontier.push_back((Some(path.clone()), id.clone()));
                 }
                 nodes.insert(path, child.node);
             }
         }
+        completed += ids.len();
+        progress(completed, nodes.len());
     }
+    tracing::info!(
+        folders = completed,
+        items = nodes.len(),
+        batches,
+        elapsed_ms = started.elapsed().as_millis(),
+        "iCloud listing complete"
+    );
 
     Ok(RemoteTree {
         nodes,

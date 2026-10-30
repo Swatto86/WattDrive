@@ -1,6 +1,7 @@
 interface MessageStatus {
   state: string;
   detail: string;
+  currentFailures?: { path: string; action: string; error: string }[];
   lastReport: {
     failures: { path: string; action: string; error: string }[];
     aborted: string | null;
@@ -32,8 +33,9 @@ export function setupMessages(): (status: MessageStatus) => void {
   let previous = "";
   return (status) => {
     const needsAttention = ["offline", "error", "signInRequired"].includes(status.state);
-    const failures = status.lastReport?.failures ?? [];
-    const aborted = status.lastReport?.aborted;
+    const failures = status.state === "syncing" || status.state === "signInRequired"
+      ? status.currentFailures ?? [] : status.lastReport?.failures ?? [];
+    const aborted = status.state === "syncing" ? null : status.lastReport?.aborted;
     const key = JSON.stringify([needsAttention ? status.detail : "", status.state, failures, aborted]);
     if (key === previous) return;
     previous = key;
