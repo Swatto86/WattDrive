@@ -51,7 +51,7 @@ impl RemoteDrive for BranchingDrive {
         for id in ids {
             self.calls.lock().unwrap().push(id.as_str().into());
             let children = match id.as_str() {
-                "root" => (0..41).map(|i| folder(&format!("p{i}"))).collect(),
+                "root" => (0..81).map(|i| folder(&format!("p{i}"))).collect(),
                 "p10" => vec![folder("child")],
                 "child" => {
                     self.descendant.notify_one();
@@ -91,13 +91,13 @@ async fn listing_keeps_workers_busy_across_depths_with_small_batches() {
         .await
         .expect("a slow sibling must not block deeper folders")
         .unwrap();
-    assert_eq!(tree.nodes.len(), 42);
-    assert_eq!(drive.peak.load(Ordering::SeqCst), 4);
+    assert_eq!(tree.nodes.len(), 82);
+    assert_eq!(drive.peak.load(Ordering::SeqCst), 8);
     assert_eq!(drive.max_batch.load(Ordering::SeqCst), 10);
     let calls = drive.calls.lock().unwrap();
-    assert_eq!(calls.len(), 43);
+    assert_eq!(calls.len(), 83);
     assert_eq!(
         calls.iter().collect::<std::collections::HashSet<_>>().len(),
-        43
+        83
     );
 }

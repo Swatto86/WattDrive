@@ -150,6 +150,7 @@ pub async fn create_folder(
     parent_drivewsid: &str,
     name: &str,
 ) -> Result<DriveItem, DriveError> {
+    let _write = client.drive_write_permit().await?;
     let url = format!("{}/createFolders", endpoint(client, "drivews")?);
     let body = json!({
         "destinationDrivewsId": parent_drivewsid,
@@ -177,6 +178,7 @@ pub async fn create_folder(
 }
 
 pub async fn trash(client: &IcloudClient, drivewsid: &str, etag: &str) -> Result<(), DriveError> {
+    let _write = client.drive_write_permit().await?;
     let url = format!("{}/moveItemsToTrash", endpoint(client, "drivews")?);
     let body = json!({"items": [{"drivewsid": drivewsid, "etag": etag, "clientId": drivewsid}]});
     let resp: ItemsEnvelope = client
@@ -246,7 +248,9 @@ pub async fn upload(
         .await?;
     let sf = single.single_file;
 
-    // 3. register the document
+    // 3. register the document. Content transfers remain parallel, but Apple
+    // rejects overlapping metadata commits with ZONE_BUSY / ATOMIC_FAILURE.
+    let _write = client.drive_write_permit().await?;
     let update_url = format!("{docws}/ws/{zone}/update/documents");
     let parent_doc = doc_id_of(parent_drivewsid);
     let update = UpdateDocument {

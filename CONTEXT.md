@@ -3,7 +3,7 @@
 > Progress log, decisions, open questions. Update at the end of any session
 > with meaningful changes; newest entries first.
 >
-> **Last updated:** 2026-10-27 (Windows support)
+> **Last updated:** 2026-10-30 (listing and parallel transfers)
 
 ## Overview
 
@@ -14,11 +14,22 @@ also supported; macOS remains outside the current scope.
 
 ## Decisions
 
-- **2026-10-30 Listing pipeline.** Use a rolling queue of up to four batches
+- **2026-10-30 iCloud write serialization.** Live concurrent upload registration
+  returned `ZONE_BUSY` (409), `SERVER_OVERLOADED` (502), and `ATOMIC_FAILURE`
+  (400). Keep content transfers parallel but serialize register/create/trash
+  requests through a single-permit semaphore on the account client. A local HTTP service
+  reproduces the rejected overlap and verifies parallel content plus serial
+  mutations. Recognized busy codes use the existing rate-limit abort path;
+  automatic polling waits after pass completion and local file events cannot
+  bypass an offline wait. Do not blindly replay ambiguous upload requests.
+
+- **2026-10-30 Listing pipeline.** Use a rolling queue of up to eight batches
   of ten folders, rather than waiting for each complete depth of the tree.
-  A read-only live benchmark of the same forty folders returned 742 items in
-  29.5 s as one batch, 11.9 s as four batches of ten, and 27.0 s as individual
-  folder calls. This is a sample, not a whole-drive speed guarantee. Preserve
+  The initial forty-folder benchmark favored smaller batches, but a full run
+  with four workers still took 838.7 s for 3,245 folders. A larger read-only
+  sample of 160 saved folders took 46.0 s with four batches of forty, 67.5 s
+  with four batches of ten, and 20.1 s with eight batches of ten; no request
+  failed. Sample timing is not a whole-drive speed guarantee. Preserve
   the missing-folder abort before any sync mutations. Listing progress shows
   folders checked/items found; file failures reach the popout during the pass.
 
@@ -170,11 +181,8 @@ also supported; macOS remains outside the current scope.
 
 ## Open questions / known gaps
 
-- WebDriver end-to-end suite (tauri.md hard requirement) not yet added: this
-  host has no `WebKitWebDriver`/`tauri-driver`; plan is to add the suite and
-  run it in CI (ubuntu-22.04 has `webkit2gtk-driver`).
 - Renames as delete+add: acceptable for v1, revisit with size+mtime matching.
-- Remote walk is a full tree listing every pass (level-parallel, 6 in flight).
+- Remote walk is a full tree listing every pass (rolling batches, eight in flight).
   Large drives may want change-detection via folder etags.
 - Etag format from `update/documents` vs folder listings unconfirmed; the
   planner's adopt-on-identical rule absorbs a mismatch without a transfer.

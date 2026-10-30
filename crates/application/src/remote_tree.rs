@@ -154,7 +154,7 @@ pub async fn walk_with_progress(
     loop {
         // Smaller batches avoid Apple's long serial response times, while a
         // rolling queue lets fast branches descend without waiting for a level.
-        while !frontier.is_empty() && pending.len() < 4 {
+        while !frontier.is_empty() && pending.len() < 8 {
             let paths: HashMap<RemoteId, Option<RelPath>> = frontier
                 .drain(..frontier.len().min(10))
                 .map(|(path, id)| (id, path))

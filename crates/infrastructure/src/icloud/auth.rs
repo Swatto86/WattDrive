@@ -1,4 +1,5 @@
 //! Sign-in, second factor, session trust and the authenticated request path
+// size-exception: retain the existing authentication state machine and shared HTTP boundary together.
 //! with silent re-authentication. Mirrors what icloud.com's own sign-in frame
 //! does against idmsa.apple.com and setup.icloud.com.
 
@@ -16,7 +17,7 @@ use super::session::{
     common_headers, SavedSession, Session, AUTH_URL, PCS_DOCUMENTS_COOKIE, SETUP_URL, USER_AGENT,
 };
 use super::srp::{derive_password, SrpClient};
-use super::wire::{AccountInfo, AuthState, PcsResponse, SrpInitResponse};
+use super::wire::{AccountInfo, AuthState, PcsResponse, ServiceError, SrpInitResponse};
 
 #[derive(Clone)]
 pub struct Credentials {
@@ -66,6 +67,9 @@ pub struct IcloudClient {
     on_progress: Mutex<Option<ProgressHook>>,
     /// Serialises re-authentication so concurrent 401s sign in once.
     reauth: tokio::sync::Mutex<()>,
+    /// Apple rejects concurrent metadata writes within a sync zone. One
+    /// account-wide lane also covers folder creation and replacement trash.
+    drive_writes: tokio::sync::Semaphore,
 }
 
 pub(super) fn net(e: reqwest::Error) -> DriveError {
@@ -91,7 +95,17 @@ impl IcloudClient {
             on_session_changed: Mutex::new(None),
             on_progress: Mutex::new(None),
             reauth: tokio::sync::Mutex::new(()),
+            drive_writes: tokio::sync::Semaphore::new(1),
         })
+    }
+
+    pub(super) async fn drive_write_permit(
+        &self,
+    ) -> Result<tokio::sync::SemaphorePermit<'_>, DriveError> {
+        self.drive_writes
+            .acquire()
+            .await
+            .map_err(|_| DriveError::Other("iCloud write queue closed".into()))
     }
 
     pub fn set_session_hook(&self, hook: SessionHook) {
@@ -653,6 +667,11 @@ pub async fn check_status(resp: Response, what: &str) -> Result<Response, DriveE
     Err(match status.as_u16() {
         429 | 503 => DriveError::RateLimited,
         401 | 421 | 450 => DriveError::SignInRequired(format!("{what}: session rejected")),
+        409 | 502
+            if serde_json::from_str::<ServiceError>(&body).is_ok_and(|error| error.is_busy()) =>
+        {
+            DriveError::RateLimited
+        }
         s => DriveError::Api {
             status: s,
             message: format!("{what}: {}", snippet(&body)),

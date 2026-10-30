@@ -1,4 +1,5 @@
 //! The background loop: runs a sync pass on a timer, on local file changes
+// size-exception: the existing runner keeps scheduling and its status transitions together.
 //! (debounced) and on demand; owns the current status and pushes it to the
 //! window and the tray.
 
@@ -248,7 +249,11 @@ impl Loop {
                 }
                 tracing::info!("sync pass ({why})");
                 self.pass().await;
-                self.last_pass_end = Some(Instant::now());
+                let completed = Instant::now();
+                self.last_pass_end = Some(completed);
+                // A long pass must not consume the next poll's waiting time,
+                // especially after Apple asks us to slow down.
+                next_timer = completed + Duration::from_secs(self.settings.poll_interval_secs);
                 // Drain change events our own pass produced.
                 while self.local_rx.try_recv().is_ok() {}
                 local_due = None;
@@ -439,7 +444,9 @@ fn should_run(signed_in: bool, paused: bool, state: SyncState, why: &str) -> boo
     if why == "manual" {
         return true;
     }
-    !paused && state != SyncState::SignInRequired
+    !paused
+        && state != SyncState::SignInRequired
+        && !(state == SyncState::Offline && why == "local change")
 }
 
 /// Skip events for our own temp/trash files so a pass does not retrigger itself.
@@ -477,7 +484,9 @@ mod tests {
     #[test]
     fn only_a_manual_sync_runs_while_paused_or_waiting_for_sign_in() {
         assert!(should_run(true, false, SyncState::Idle, "timer"));
-        assert!(should_run(true, false, SyncState::Offline, "local change"));
+        assert!(!should_run(true, false, SyncState::Offline, "local change"));
+        assert!(should_run(true, false, SyncState::Offline, "timer"));
+        assert!(should_run(true, false, SyncState::Offline, "manual"));
         assert!(should_run(true, false, SyncState::Error, "folder changed"));
         assert!(!should_run(false, false, SyncState::Idle, "manual"));
         for why in ["timer", "local change", "folder changed", "resumed"] {

@@ -133,6 +133,8 @@ The first pass creates the sync folder if needed and mirrors iCloud Drive into
 it.
 
 Ordinary files sync in both directions, with up to four transfers at once.
+File contents travel in parallel; final iCloud file-record changes happen one
+at a time because Apple rejects overlapping writes to the same sync zone.
 Existing files with matching sizes and modification times are recorded without
 transferring their contents. The progress count includes these records and
 folder operations as well as transfers.
@@ -140,10 +142,12 @@ folder operations as well as transfers.
 Use **View messages** to open detailed sync errors. If the connection fails or
 iCloud asks WattDrive to slow down, new transfers stop while active transfers
 finish. Completed work is saved and unfinished items are checked again on the
-next sync. Sign-in problems require signing in again.
+next sync. Busy-server responses pause new work, and the next automatic poll
+waits until the configured interval after the pass ends. Sign-in problems
+require signing in again.
 
 While listing, WattDrive shows the number of folders checked and items found.
-It checks up to four small batches at once and explores each branch as results
+It checks up to eight batches of ten folders at once and explores each branch as results
 arrive. File errors appear in **View messages** during the pass.
 
 ### Apple bundles

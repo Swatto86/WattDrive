@@ -14,6 +14,9 @@ pub mod session;
 pub mod srp;
 mod wire;
 
+#[cfg(test)]
+mod transfer_tests;
+
 pub use adapter::IcloudDrive;
 pub use auth::{Credentials, IcloudClient, SignInStep, TrustedPhone};
 pub use session::SavedSession;

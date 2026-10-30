@@ -8,6 +8,23 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
+/// Busy responses may use HTTP 409 or 502 instead of 429/503.
+#[derive(Debug, Deserialize)]
+pub struct ServiceError {
+    #[serde(default)]
+    error_code: String,
+    #[serde(rename = "serverErrorCode", default)]
+    server_error_code: String,
+}
+
+impl ServiceError {
+    pub fn is_busy(&self) -> bool {
+        [&self.error_code, &self.server_error_code]
+            .iter()
+            .any(|code| matches!(code.as_str(), "ZONE_BUSY" | "SERVER_OVERLOADED"))
+    }
+}
+
 /// `POST /signin/init` response.
 #[derive(Debug, Deserialize)]
 pub struct SrpInitResponse {
@@ -278,6 +295,24 @@ pub struct Document {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn service_busy_codes_are_distinct_from_other_failures() {
+        for (body, busy) in [
+            (r#"{"error_code":"ZONE_BUSY"}"#, true),
+            (
+                r#"{"error_code":"WSInternalError","serverErrorCode":"SERVER_OVERLOADED","retryAfter":10}"#,
+                true,
+            ),
+            (r#"{"error_code":"ATOMIC_FAILURE"}"#, false),
+            (r#"{"error_code":"ETAG_CONFLICT"}"#, false),
+            (r#"{}"#, false),
+        ] {
+            let error: ServiceError = serde_json::from_str(body).unwrap();
+            assert_eq!(error.is_busy(), busy);
+        }
+        assert!(serde_json::from_str::<ServiceError>("not JSON").is_err());
+    }
 
     #[test]
     fn folder_listing_decodes_files_folders_and_app_libraries() {
